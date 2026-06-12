@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Translade Video AI</title>
+    <!-- Premium Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #0a051b;
+            --bg-glass: rgba(15, 10, 35, 0.45);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --primary: #8a2be2;
+            --primary-glow: rgba(138, 43, 226, 0.4);
+            --secondary: #00ffff;
+            --secondary-glow: rgba(0, 255, 255, 0.3);
+            --text-main: #f5f3ff;
+            --text-muted: #a78bfa;
+            --success: #10b981;
+            --error: #ef4444;
+            --card-radius: 20px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at 50% 50%, #1e0b36 0%, var(--bg-base) 70%);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 960px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        /* Glassmorphism Header */
+        header {
+            text-align: center;
+            padding: 20px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--card-radius);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        header h1 {
+            font-size: 2.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #c084fc 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px var(--primary-glow);
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        /* Cards Style */
+        .card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--card-radius);
+            padding: 30px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 12px 40px 0 rgba(138, 43, 226, 0.15);
+        }
+
+        .card-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #d8b4fe;
+            border-left: 4px solid var(--secondary);
+            padding-left: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Input Fields */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.95rem;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #c084fc;
+        }
+
+        .input-text {
+            width: 100%;
+            padding: 14px 18px;
+            background: rgba(10, 5, 25, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: var(--text-main);
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.25s ease;
+        }
+
+        .input-text:focus {
+            outline: none;
+            border-color: var(--secondary);
+            box-shadow: 0 0 15px var(--secondary-glow);
+            background: rgba(10, 5, 25, 0.85);
+        }
+
+        /* Control Options Grid */
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .options-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .select-custom {
+            width: 100%;
+            padding: 14px 18px;
+            background: rgba(10, 5, 25, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: var(--text-main);
+            font-size: 1rem;
+            font-family: inherit;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a78bfa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 18px center;
+            background-size: 18px;
+            transition: all 0.25s ease;
+        }
+
+        .select-custom:focus {
+            outline: none;
+            border-color: var(--secondary);
+            box-shadow: 0 0 15px var(--secondary-glow);
+        }
+
+        /* Custom Options Card */
+        .option-card-group {
+            display: flex;
+            gap: 12px;
+        }
+
+        .option-btn {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        .option-btn:hover {
+            background: rgba(255, 255, 255, 0.07);
+            color: var(--text-main);
+        }
+
+        .option-btn.active {
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.25) 0%, rgba(0, 255, 255, 0.1) 100%);
+            border-color: var(--secondary);
+            color: var(--text-main);
+            box-shadow: 0 0 12px rgba(0, 255, 255, 0.15);
+        }
+
+        /* Checkbox Toggles */
+        .toggle-group {
+            display: flex;
+            gap: 20px;
+            margin: 10px 0 25px 0;
+            flex-wrap: wrap;
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+            font-size: 0.95rem;
+            color: #d8b4fe;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 10px 16px;
+            border-radius: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .checkbox-container:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .checkbox-container input {
+            display: none;
+        }
+
+        .checkmark {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--text-muted);
+            border-radius: 5px;
+            margin-right: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .checkbox-container input:checked + .checkmark {
+            background-color: var(--secondary);
+            border-color: var(--secondary);
+            box-shadow: 0 0 8px var(--secondary-glow);
+        }
+
+        .checkbox-container input:checked + .checkmark::after {
+            content: "✓";
+            color: var(--bg-base);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        /* Collapsible Section */
+        .accordion-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            cursor: pointer;
+            padding: 10px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 15px;
+            transition: color 0.2s ease;
+        }
+
+        .accordion-header:hover {
+            color: var(--text-main);
+        }
+
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s cubic-bezier(0, 1, 0, 1);
+        }
+
+        .accordion-content.open {
+            max-height: 500px;
+            transition: max-height 0.3s cubic-bezier(1, 0, 1, 0);
+            padding-top: 15px;
+        }
+
+        /* Large Action Button */
+        .btn-run {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--primary) 0%, #a855f7 100%);
+            border: none;
+            border-radius: 12px;
+            color: var(--text-main);
+            font-size: 1.15rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 15px var(--primary-glow);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-run:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(138, 43, 226, 0.6);
+            background: linear-gradient(135deg, #9b4de6 0%, #b86ff8 100%);
+        }
+
+        .btn-run:active {
+            transform: translateY(1px);
+        }
+
+        .btn-run::after {
+            content: "";
+            position: absolute;
+            top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: all 0.5s ease;
+        }
+
+        .btn-run:hover::after {
+            left: 100%;
+        }
+
+        /* Status Details */
+        .status-container {
+            display: none; /* Shown dynamically */
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Progress Tracker */
+        .progress-track {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            margin-bottom: 20px;
+            padding: 0 10px;
+        }
+
+        .progress-track::before {
+            content: "";
+            position: absolute;
+            top: 15px; left: 0; right: 0; height: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            z-index: 1;
+        }
+
+        .progress-fill {
+            position: absolute;
+            top: 15px; left: 0; height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            width: 0%;
+            z-index: 2;
+            transition: width 0.4s ease;
+        }
+
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 3;
+            width: 70px;
+        }
+
+        .step-circle {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #1e1b4b;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .step.active .step-circle {
+            background: var(--bg-base);
+            border-color: var(--secondary);
+            color: var(--secondary);
+            box-shadow: 0 0 15px var(--secondary-glow);
+            transform: scale(1.1);
+            animation: pulse 1.8s infinite;
+        }
+
+        .step.completed .step-circle {
+            background: var(--success);
+            border-color: var(--success);
+            color: #fff;
+        }
+
+        .step-label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-top: 8px;
+            color: var(--text-muted);
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .step.active .step-label {
+            color: var(--secondary);
+            font-weight: 600;
+        }
+
+        .step.completed .step-label {
+            color: var(--success);
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(0, 255, 255, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 255, 255, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 255, 255, 0); }
+        }
+
+        /* Console Terminal Simulator */
+        .terminal-panel {
+            background: #040209;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            height: 250px;
+            overflow-y: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            color: #d1c4e9;
+            line-height: 1.5;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+        }
+
+        .terminal-line {
+            margin-bottom: 4px;
+            white-space: pre-wrap;
+            border-left: 2px solid transparent;
+            padding-left: 8px;
+        }
+
+        .terminal-line.info { border-left-color: var(--secondary); }
+        .terminal-line.warning { border-left-color: #f59e0b; color: #f59e0b; }
+        .terminal-line.error { border-left-color: var(--error); color: var(--error); }
+        .terminal-line.step-log { border-left-color: var(--primary); color: #c084fc; font-weight: 500; }
+
+        /* Output Card styling */
+        .output-container {
+            display: none; /* Shown dynamically */
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .video-player {
+            width: 100%;
+            border-radius: 12px;
+            border: 1px solid var(--border-glass);
+            box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+            background: #000;
+        }
+
+        .published-link {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
+        }
+
+        .published-link span {
+            font-weight: 500;
+            color: #a7f3d0;
+        }
+
+        .published-link a {
+            color: var(--secondary);
+            text-decoration: none;
+            font-weight: 600;
+            border-bottom: 1px dashed var(--secondary);
+            transition: all 0.2s ease;
+        }
+
+        .published-link a:hover {
+            color: #fff;
+            border-color: #fff;
+        }
+
+        .metadata-box {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .metadata-box h4 {
+            font-size: 0.95rem;
+            color: #d8b4fe;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metadata-text {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: var(--text-main);
+            white-space: pre-wrap;
+        }
+
+        .btn-copy {
+            position: absolute;
+            top: 15px; right: 15px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 5px 10px;
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-copy:hover {
+            background: var(--secondary);
+            color: var(--bg-base);
+            border-color: var(--secondary);
+        }
+
+        .indicator-pulse {
+            width: 10px; height: 10px;
+            background-color: var(--secondary);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            box-shadow: 0 0 8px var(--secondary);
+            animation: pulse-simple 1.5s infinite;
+        }
+
+        @keyframes pulse-simple {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 255, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(0, 255, 255, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 255, 0); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Header -->
+    <header>
+        <h1>Auto-Translade AI</h1>
+        <p>Hệ thống tự động lồng tiếng Việt và xuất bản video tối ưu SEO</p>
+    </header>
+
+    <!-- Control Card -->
+    <section class="card" id="control-card">
+        <div class="card-title">Cấu hình Dubbing</div>
+
+        <!-- URL Input -->
+        <div class="form-group">
+            <label for="video-url">URL Video nguồn (YouTube, TikTok, Douyin...)</label>
+            <input type="text" id="video-url" class="input-text" placeholder="https://www.youtube.com/watch?v=..." value="">
+        </div>
+
+        <!-- Options Grid -->
+        <div class="options-grid">
+            <!-- Voice selection -->
+            <div class="form-group">
+                <label>Giọng đọc lồng tiếng</label>
+                <div class="option-card-group" id="voice-group">
+                    <button type="button" class="option-btn active" data-val="female">Nữ (Female)</button>
+                    <button type="button" class="option-btn" data-val="male">Nam (Male)</button>
+                </div>
+            </div>
+
+            <!-- BG Separator Mode -->
+            <div class="form-group">
+                <label>Xử lý nhạc nền (BGM)</label>
+                <div class="option-card-group" id="bg-group">
+                    <button type="button" class="option-btn active" data-val="demucs">Tách AI (Demucs)</button>
+                    <button type="button" class="option-btn" data-val="duck">Nền nhẹ (Duck -12dB)</button>
+                    <button type="button" class="option-btn" data-val="none">Không nhạc nền</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Checkbox publishing options -->
+        <div class="form-group">
+            <label>Đăng tải tự động (Auto-Publish)</label>
+            <div class="toggle-group">
+                <label class="checkbox-container">
+                    <input type="checkbox" id="pub-youtube">
+                    <div class="checkmark"></div>
+                    YouTube Channel
+                </label>
+                <label class="checkbox-container">
+                    <input type="checkbox" id="pub-facebook">
+                    <div class="checkmark"></div>
+                    Facebook Page
+                </label>
+            </div>
+        </div>
+
+        <!-- Advanced settings Accordion -->
+        <div class="accordion-header" onclick="toggleAdvancedSettings()">
+            <span>Thiết lập nâng cao (Ngôn ngữ nguồn, độ giảm nhạc...)</span>
+            <span id="accordion-arrow">▼</span>
+        </div>
+        <div class="accordion-content" id="advanced-settings">
+            <div class="options-grid">
+                <div class="form-group">
+                    <label for="src-lang">Ngôn ngữ gốc của Video</label>
+                    <select id="src-lang" class="select-custom">
+                        <option value="en-US">English (Tiếng Anh)</option>
+                        <option value="zh-CN">Chinese (Tiếng Trung)</option>
+                        <option value="ja-JP">Japanese (Tiếng Nhật)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="bg-gain">Ducking BGM Volume (dB)</label>
+                    <input type="number" id="bg-gain" class="input-text" value="-12" min="-30" max="0" step="1">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="file-path">Hoặc đường dẫn file video nội bộ (Local file path)</label>
+                <input type="text" id="file-path" class="input-text" placeholder="D:\inputs\video.mp4">
+            </div>
+        </div>
+
+        <!-- Action Button -->
+        <button type="button" class="btn-run" id="btn-submit" onclick="submitPipeline()">Bắt đầu xử lý lồng tiếng</button>
+    </section>
+
+    <!-- Status Tracker Card -->
+    <section class="card status-container" id="status-card">
+        <div class="card-title">
+            <span>Trạng thái xử lý</span>
+            <span id="status-badge" style="color: var(--secondary); font-size: 0.95rem; font-weight: 500;">
+                <span class="indicator-pulse"></span>Khởi chạy
+            </span>
+        </div>
+
+        <!-- Progress Steps Tracker -->
+        <div class="progress-track">
+            <div class="progress-fill" id="progress-bar"></div>
+            <div class="step active" id="step-1">
+                <div class="step-circle">1</div>
+                <div class="step-label">Tải Video</div>
+            </div>
+            <div class="step" id="step-2">
+                <div class="step-circle">2</div>
+                <div class="step-label">Tách Âm</div>
+            </div>
+            <div class="step" id="step-3">
+                <div class="step-circle">3</div>
+                <div class="step-label">ASR</div>
+            </div>
+            <div class="step" id="step-4">
+                <div class="step-circle">4</div>
+                <div class="step-label">Dịch thuật</div>
+            </div>
+            <div class="step" id="step-5">
+                <div class="step-circle">5</div>
+                <div class="step-label">TTS AI</div>
+            </div>
+            <div class="step" id="step-6">
+                <div class="step-circle">6</div>
+                <div class="step-label">Lồng nhạc</div>
+            </div>
+            <div class="step" id="step-7">
+                <div class="step-circle">7</div>
+                <div class="step-label">Xuất bản</div>
+            </div>
+        </div>
+
+        <!-- Terminal Console -->
+        <div class="terminal-panel" id="terminal-log">
+            <div class="terminal-line info">Hệ thống sẵn sàng...</div>
+        </div>
+    </section>
+
+    <!-- Output Product Card -->
+    <section class="card output-container" id="output-card">
+        <div class="card-title">Kết quả Video Lồng tiếng</div>
+
+        <!-- Video Player -->
+        <video id="result-video" class="video-player" controls>
+            <source src="" type="video/mp4">
+            Trình duyệt của bạn không hỗ trợ phát Video.
+        </video>
+
+        <!-- Published Links -->
+        <div id="publishing-results" style="display: none;">
+            <div class="published-link" id="yt-link-container" style="display: none;">
+                <span>YouTube Video:</span>
+                <a href="" id="yt-url" target="_blank">Xem trên YouTube</a>
+            </div>
+            <div class="published-link" id="fb-link-container" style="display: none;">
+                <span>Facebook Video:</span>
+                <a href="" id="fb-url" target="_blank">Xem trên Facebook</a>
+            </div>
+        </div>
+
+        <!-- Copyable Metadata -->
+        <div class="form-group">
+            <label>Nội dung đăng tải đề xuất (SEO Metadata)</label>
+            
+            <div class="metadata-box">
+                <h4>Tiêu đề (Title)</h4>
+                <button class="btn-copy" onclick="copyText('meta-title')">Copy</button>
+                <div class="metadata-text" id="meta-title">Chưa tạo</div>
+            </div>
+
+            <div class="metadata-box">
+                <h4>Mô tả (Description)</h4>
+                <button class="btn-copy" onclick="copyText('meta-desc')">Copy</button>
+                <div class="metadata-text" id="meta-desc">Chưa tạo</div>
+            </div>
+
+            <div class="metadata-box">
+                <h4>Thẻ Tags / Hashtags</h4>
+                <button class="btn-copy" onclick="copyText('meta-tags')">Copy</button>
+                <div class="metadata-text" id="meta-tags">Chưa tạo</div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+    // Selected Options
+    let activeVoice = "female";
+    let activeBgMode = "demucs";
+    let activeTaskId = null;
+    let pollIntervalId = null;
+
+    // Button lists
+    const voiceBtns = document.querySelectorAll("#voice-group button");
+    const bgBtns = document.querySelectorAll("#bg-group button");
+
+    // Init option event listeners
+    voiceBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            voiceBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeVoice = btn.getAttribute("data-val");
+        });
+    });
+
+    bgBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            bgBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeBgMode = btn.getAttribute("data-val");
+        });
+    });
+
+    function toggleAdvancedSettings() {
+        const content = document.getElementById("advanced-settings");
+        const arrow = document.getElementById("accordion-arrow");
+        content.classList.toggle("open");
+        if (content.classList.contains("open")) {
+            arrow.textContent = "▲";
+        } else {
+            arrow.textContent = "▼";
+        }
+    }
+
+    // Submit request to backend
+    async function submitPipeline() {
+        const urlInput = document.getElementById("video-url").value.trim();
+        const fileInput = document.getElementById("file-path").value.trim();
+
+        if (!urlInput && !fileInput) {
+            alert("Vui lòng cung cấp URL Video hoặc đường dẫn video local!");
+            return;
+        }
+
+        const payload = {
+            url: urlInput || null,
+            file_path: fileInput || null,
+            source_lang: document.getElementById("src-lang").value,
+            voice: activeVoice,
+            bg_mode: activeBgMode,
+            bg_duck_db: parseFloat(document.getElementById("bg-gain").value),
+            publish_youtube: document.getElementById("pub-youtube").checked,
+            publish_facebook: document.getElementById("pub-facebook").checked
+        };
+
+        // Disable button
+        const btnSubmit = document.getElementById("btn-submit");
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "Đang bắt đầu...";
+
+        try {
+            const resp = await fetch("/api/run", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!resp.ok) {
+                const errorData = await resp.json();
+                throw new Error(errorData.detail || "Không thể khởi chạy pipeline");
+            }
+
+            const data = await resp.json();
+            activeTaskId = data.task_id;
+            
+            // Show Status Card, Hide Output Card
+            document.getElementById("status-card").style.display = "flex";
+            document.getElementById("output-card").style.display = "none";
+            document.getElementById("terminal-log").innerHTML = '<div class="terminal-line info">Bắt đầu tiến trình lồng tiếng (Task ID: ' + activeTaskId + ')...</div>';
+            
+            // Reset Progress Track
+            resetProgressSteps();
+
+            // Start Polling
+            startPolling();
+
+        } catch (err) {
+            alert("Lỗi: " + err.message);
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
+        }
+    }
+
+    // Reset UI progress tracker
+    function resetProgressSteps() {
+        document.getElementById("progress-bar").style.width = "0%";
+        for (let i = 1; i <= 7; i++) {
+            const el = document.getElementById("step-" + i);
+            el.classList.remove("active", "completed");
+        }
+        document.getElementById("step-1").classList.add("active");
+    }
+
+    // Start polling status endpoint
+    function startPolling() {
+        if (pollIntervalId) clearInterval(pollIntervalId);
+        pollIntervalId = setInterval(checkStatus, 1500);
+    }
+
+    // Check status and update UI
+    async function checkStatus() {
+        if (!activeTaskId) return;
+
+        try {
+            const resp = await fetch("/api/status/" + activeTaskId);
+            if (!resp.ok) return;
+
+            const data = await resp.json();
+            
+            // Update terminal logs
+            updateTerminalLogs(data.logs);
+
+            // Update Progress Steps based on logs / pipeline step info
+            updateProgressTracker(data.progress_step, data.status);
+
+            // Check final status
+            if (data.status === "success") {
+                clearInterval(pollIntervalId);
+                handlePipelineSuccess(data.result);
+            } else if (data.status === "failed") {
+                clearInterval(pollIntervalId);
+                handlePipelineFailure(data.error);
+            } else if (data.status === "translate_pending") {
+                clearInterval(pollIntervalId);
+                handlePipelinePendingTranslation(data.result);
+            }
+
+        } catch (err) {
+            console.error("Lỗi khi kiểm tra trạng thái: ", err);
+        }
+    }
+
+    // Print logs inside the console simulator
+    function updateTerminalLogs(logs) {
+        const consoleEl = document.getElementById("terminal-log");
+        let html = "";
+        logs.forEach(line => {
+            let className = "info";
+            if (line.includes("WARNING")) className = "warning";
+            else if (line.includes("ERROR")) className = "error";
+            else if (line.includes("STEP")) className = "step-log";
+            
+            html += `<div class="terminal-line ${className}">${escapeHtml(line)}</div>`;
+        });
+        consoleEl.innerHTML = html;
+        consoleEl.scrollTop = consoleEl.scrollHeight; // Auto Scroll
+    }
+
+    function escapeHtml(text) {
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    // Map current pipeline steps to the 7 UI progress points
+    function updateProgressTracker(stepName, status) {
+        const stepMap = {
+            "STEP 1": 1, // Acquiring video
+            "STEP 2": 2, // Extracting audio
+            "STEP 2.5": 2, // Vocal separation
+            "STEP 3": 3, // Transcribing (ASR)
+            "STEP 4": 4, // Translating
+            "STEP 5": 5, // Synthesizing (TTS)
+            "STEP 6": 6, // Merging audio
+            "STEP 7": 7  // Merging video / publishing
+        };
+
+        let activeStepNum = 1;
+        for (const [key, value] of Object.entries(stepMap)) {
+            if (stepName && stepName.includes(key)) {
+                activeStepNum = value;
+                break;
+            }
+        }
+
+        if (stepName === "Completed") activeStepNum = 7;
+
+        // Fill bar
+        const fillPercent = ((activeStepNum - 1) / 6) * 100;
+        document.getElementById("progress-bar").style.width = fillPercent + "%";
+
+        // Style steps
+        for (let i = 1; i <= 7; i++) {
+            const el = document.getElementById("step-" + i);
+            el.classList.remove("active", "completed");
+            
+            if (i < activeStepNum) {
+                el.classList.add("completed");
+            } else if (i === activeStepNum) {
+                if (status === "success" && i === 7) {
+                    el.classList.add("completed");
+                } else if (status === "failed") {
+                    el.classList.add("active"); // shows failed step
+                } else {
+                    el.classList.add("active");
+                }
+            }
+        }
+
+        // Badge label
+        const badge = document.getElementById("status-badge");
+        if (status === "running") {
+            badge.style.color = "var(--secondary)";
+            badge.innerHTML = `<span class="indicator-pulse"></span>Đang chạy: ${stepName}`;
+        } else if (status === "success") {
+            badge.style.color = "var(--success)";
+            badge.innerHTML = `✓ Hoàn tất`;
+        } else if (status === "failed") {
+            badge.style.color = "var(--error)";
+            badge.innerHTML = `✗ Lỗi tiến trình`;
+        } else if (status === "translate_pending") {
+            badge.style.color = "#fbbf24";
+            badge.innerHTML = `⚠ Đợi dịch`;
+        }
+    }
+
+    function handlePipelineSuccess(result) {
+        // Enable action button
+        const btnSubmit = document.getElementById("btn-submit");
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
+
+        // Show Output Card
+        const outputCard = document.getElementById("output-card");
+        outputCard.style.display = "flex";
+
+        // Load Dubbed Video
+        const videoEl = document.getElementById("result-video");
+        if (result.files && result.files.dubbed_video) {
+            // Convert file path to server URL path
+            const relPath = result.files.dubbed_video.replace(/\\/g, '/').split('/output/')[1];
+            videoEl.src = "/output/" + relPath;
+            videoEl.style.display = "block";
+        } else {
+            videoEl.style.display = "none";
+        }
+
+        // Display Metadata
+        const metadata = result.youtube_metadata_content || result.metadata || {};
+        document.getElementById("meta-title").textContent = metadata.title || "Không thể tạo tiêu đề";
+        document.getElementById("meta-desc").textContent = metadata.description || "Không thể tạo mô tả";
+        document.getElementById("meta-tags").textContent = (metadata.hashtags || []).join(" ") || "Không có tags";
+
+        // Display publishing URLs
+        const resultsEl = document.getElementById("publishing-results");
+        const ytContainer = document.getElementById("yt-link-container");
+        const fbContainer = document.getElementById("fb-link-container");
+
+        resultsEl.style.display = "none";
+        ytContainer.style.display = "none";
+        fbContainer.style.display = "none";
+
+        if (result.published_urls) {
+            let hasUrls = false;
+            if (result.published_urls.youtube) {
+                document.getElementById("yt-url").href = result.published_urls.youtube;
+                ytContainer.style.display = "flex";
+                hasUrls = true;
+            }
+            if (result.published_urls.facebook) {
+                document.getElementById("fb-url").href = result.published_urls.facebook;
+                fbContainer.style.display = "flex";
+                hasUrls = true;
+            }
+            if (hasUrls) {
+                resultsEl.style.display = "block";
+            }
+        }
+
+        // Fetch custom metadata details if saved to JSON file
+        if (result.files && result.files.youtube_metadata) {
+            fetchMetadataContent(result.files.youtube_metadata);
+        }
+
+        outputCard.scrollIntoView({ behavior: "smooth" });
+    }
+
+    async function fetchMetadataContent(metadataFilePath) {
+        try {
+            // convert abs path to output url
+            const relPath = metadataFilePath.replace(/\\/g, '/').split('/output/')[1];
+            const resp = await fetch("/output/" + relPath);
+            if (resp.ok) {
+                const metadata = await resp.json();
+                document.getElementById("meta-title").textContent = metadata.title || "Tiêu đề";
+                document.getElementById("meta-desc").textContent = metadata.description || "Mô tả";
+                document.getElementById("meta-tags").textContent = (metadata.hashtags || []).join(" ") || "Tags";
+            }
+        } catch (e) {
+            console.error("Lỗi khi tải metadata chi tiết: ", e);
+        }
+    }
+
+    function handlePipelineFailure(errMessage) {
+        const btnSubmit = document.getElementById("btn-submit");
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
+        alert("Tiến trình bị gián đoạn do lỗi: " + errMessage);
+    }
+
+    function handlePipelinePendingTranslation(result) {
+        const btnSubmit = document.getElementById("btn-submit");
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "Tiếp tục lồng tiếng (Resume)";
+        alert("Đang đợi dịch transcript! Vui lòng kiểm tra TRANSLATE_PENDING.txt trong thư mục làm việc: " + result.work_dir);
+    }
+
+    function copyText(elementId) {
+        const text = document.getElementById(elementId).textContent;
+        navigator.clipboard.writeText(text).then(() => {
+            alert("Đã sao chép nội dung vào Clipboard!");
+        }).catch(err => {
+            console.error("Lỗi copy: ", err);
+        });
+    }
+</script>
+
+</body>
+</html>
