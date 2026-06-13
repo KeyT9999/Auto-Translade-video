@@ -601,7 +601,7 @@
 
         <!-- Checkbox publishing options -->
         <div class="form-group">
-            <label>Đăng tải tự động (Auto-Publish)</label>
+            <label>Đăng tải tự động (Auto-Publish) & Cấu hình</label>
             <div class="toggle-group">
                 <label class="checkbox-container">
                     <input type="checkbox" id="pub-youtube">
@@ -612,6 +612,16 @@
                     <input type="checkbox" id="pub-facebook">
                     <div class="checkmark"></div>
                     Facebook Page
+                </label>
+                <label class="checkbox-container">
+                    <input type="checkbox" id="pause-for-speakers">
+                    <div class="checkmark"></div>
+                    Gán giọng nhân vật thủ công (Dừng lại để chọn giọng)
+                </label>
+                <label class="checkbox-container">
+                    <input type="checkbox" id="burn-subtitles" checked>
+                    <div class="checkmark"></div>
+                    Ghi phụ đề tiếng Việt vào Video (Hardsub)
                 </label>
             </div>
         </div>
@@ -676,14 +686,18 @@
             </div>
             <div class="step" id="step-5">
                 <div class="step-circle">5</div>
-                <div class="step-label">TTS AI</div>
+                <div class="step-label">Nhận diện giọng</div>
             </div>
             <div class="step" id="step-6">
                 <div class="step-circle">6</div>
-                <div class="step-label">Lồng nhạc</div>
+                <div class="step-label">TTS AI</div>
             </div>
             <div class="step" id="step-7">
                 <div class="step-circle">7</div>
+                <div class="step-label">Lồng nhạc</div>
+            </div>
+            <div class="step" id="step-8">
+                <div class="step-circle">8</div>
                 <div class="step-label">Xuất bản</div>
             </div>
         </div>
@@ -692,6 +706,28 @@
         <div class="terminal-panel" id="terminal-log">
             <div class="terminal-line info">Hệ thống sẵn sàng...</div>
         </div>
+    </section>
+
+    <!-- Speaker Configuration Card (Shown when pipeline is pending speaker assignment) -->
+    <section class="card" id="speaker-config-card" style="display: none; flex-direction: column; gap: 20px;">
+        <div class="card-title">
+            <span>Cấu hình Giọng Nhân vật</span>
+            <span style="color: #fbbf24; font-size: 0.95rem; font-weight: 500;">
+                <span class="indicator-pulse" style="background-color: #fbbf24; box-shadow: 0 0 8px #fbbf24;"></span>Đang đợi chọn giọng
+            </span>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 10px;">
+            Hệ thống phát hiện các nhân vật dưới đây từ transcript. Hãy gán giọng đọc tương ứng cho từng nhân vật trước khi tiếp tục.
+        </p>
+
+        <!-- Characters Container -->
+        <div id="speakers-list-container" style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px;">
+            <!-- Rendered dynamically -->
+        </div>
+
+        <button type="button" class="btn-run" id="btn-resume-speakers" onclick="resumePipelineWithSpeakers()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">
+            Tiếp tục tiến trình lồng tiếng (Resume)
+        </button>
     </section>
 
     <!-- Output Product Card -->
@@ -798,7 +834,9 @@
             bg_mode: activeBgMode,
             bg_duck_db: parseFloat(document.getElementById("bg-gain").value),
             publish_youtube: document.getElementById("pub-youtube").checked,
-            publish_facebook: document.getElementById("pub-facebook").checked
+            publish_facebook: document.getElementById("pub-facebook").checked,
+            pause_for_speakers: document.getElementById("pause-for-speakers").checked,
+            burn_subtitles: document.getElementById("burn-subtitles").checked
         };
 
         // Disable button
@@ -815,7 +853,17 @@
 
             if (!resp.ok) {
                 const errorData = await resp.json();
-                throw new Error(errorData.detail || "Không thể khởi chạy pipeline");
+                let errMsg = "Không thể khởi chạy pipeline";
+                if (errorData && errorData.detail) {
+                    if (typeof errorData.detail === "string") {
+                        errMsg = errorData.detail;
+                    } else if (Array.isArray(errorData.detail)) {
+                        errMsg = errorData.detail.map(err => `${err.loc.join('.')}: ${err.msg}`).join("\n");
+                    } else {
+                        errMsg = JSON.stringify(errorData.detail);
+                    }
+                }
+                throw new Error(errMsg);
             }
 
             const data = await resp.json();
@@ -839,10 +887,219 @@
         }
     }
 
+    let currentWorkDir = null;
+
+    function renderSpeakerConfig(data) {
+        const container = document.getElementById("speakers-list-container");
+        container.innerHTML = "";
+        
+        const speakers = data.speakers;
+        const defaultMale = data.default_male;
+        const defaultFemale = data.default_female;
+        
+        if (speakers.length === 0) {
+            container.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-muted);">Không phát hiện nhân vật nào. Hãy click Tiếp tục.</div>`;
+            return;
+        }
+        
+        speakers.forEach(sp => {
+            const row = document.createElement("div");
+            row.style.display = "flex";
+            row.style.flexDirection = "column";
+            row.style.gap = "8px";
+            row.style.padding = "16px";
+            row.style.background = "rgba(255, 255, 255, 0.02)";
+            row.style.border = "1px solid rgba(255, 255, 255, 0.05)";
+            row.style.borderRadius = "12px";
+            row.className = "speaker-row";
+            row.setAttribute("data-speaker", sp.speaker);
+            
+            // Header row: Role name & gender tag
+            const header = document.createElement("div");
+            header.style.display = "flex";
+            header.style.justifyContent = "space-between";
+            header.style.alignItems = "center";
+            
+            const nameSpan = document.createElement("span");
+            nameSpan.textContent = sp.speaker;
+            nameSpan.style.fontWeight = "600";
+            nameSpan.style.color = "#c084fc";
+            
+            const genderBadge = document.createElement("span");
+            genderBadge.textContent = sp.gender === "male" ? "Nam (Male)" : (sp.gender === "female" ? "Nữ (Female)" : "Trung tính (Neutral)");
+            genderBadge.style.fontSize = "0.8rem";
+            genderBadge.style.padding = "3px 8px";
+            genderBadge.style.borderRadius = "6px";
+            genderBadge.style.background = sp.gender === "male" ? "rgba(59, 130, 246, 0.15)" : (sp.gender === "female" ? "rgba(236, 72, 153, 0.15)" : "rgba(156, 163, 175, 0.15)");
+            genderBadge.style.color = sp.gender === "male" ? "#60a5fa" : (sp.gender === "female" ? "#f472b6" : "#9ca3af");
+            genderBadge.style.border = sp.gender === "male" ? "1px solid rgba(59, 130, 246, 0.3)" : (sp.gender === "female" ? "1px solid rgba(236, 72, 153, 0.3)" : "1px solid rgba(156, 163, 175, 0.3)");
+            
+            header.appendChild(nameSpan);
+            header.appendChild(genderBadge);
+            
+            // Control row: Select dropdown & custom voice input
+            const selectContainer = document.createElement("div");
+            selectContainer.style.display = "flex";
+            selectContainer.style.flexDirection = "column";
+            selectContainer.style.gap = "8px";
+            
+            const select = document.createElement("select");
+            select.className = "select-custom character-voice-select";
+            select.style.padding = "10px 14px";
+            select.style.fontSize = "0.95rem";
+            
+            const isMale = sp.gender === "male";
+            
+            const optMale = document.createElement("option");
+            optMale.value = defaultMale;
+            optMale.textContent = `Giọng Nam mặc định (ID: ${defaultMale ? defaultMale.substring(0, 6) + '...' : 'Chưa cấu hình'})`;
+            if (isMale) optMale.selected = true;
+            
+            const optFemale = document.createElement("option");
+            optFemale.value = defaultFemale;
+            optFemale.textContent = `Giọng Nữ mặc định (ID: ${defaultFemale ? defaultFemale.substring(0, 6) + '...' : 'Chưa cấu hình'})`;
+            if (!isMale && sp.gender === "female") optFemale.selected = true;
+            
+            const optCustom = document.createElement("option");
+            optCustom.value = "custom";
+            optCustom.textContent = "Nhập LucyLab Voice ID tự chọn...";
+            if (!isMale && sp.gender !== "female") optCustom.selected = true;
+            
+            select.appendChild(optFemale);
+            select.appendChild(optMale);
+            select.appendChild(optCustom);
+            
+            const customInput = document.createElement("input");
+            customInput.type = "text";
+            customInput.className = "input-text custom-voice-input";
+            customInput.style.padding = "10px 14px";
+            customInput.style.fontSize = "0.9rem";
+            customInput.placeholder = "Nhập LucyLab Voice ID ở đây";
+            customInput.style.display = select.value === "custom" ? "block" : "none";
+            
+            select.addEventListener("change", (e) => {
+                if (e.target.value === "custom") {
+                    customInput.style.display = "block";
+                } else {
+                    customInput.style.display = "none";
+                }
+            });
+            
+            selectContainer.appendChild(select);
+            selectContainer.appendChild(customInput);
+            
+            row.appendChild(header);
+            row.appendChild(selectContainer);
+            container.appendChild(row);
+        });
+    }
+
+    async function handlePipelinePendingSpeaker(result) {
+        currentWorkDir = result.work_dir;
+        
+        const btnSubmit = document.getElementById("btn-submit");
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
+        
+        document.getElementById("speaker-config-card").style.display = "flex";
+        document.getElementById("output-card").style.display = "none";
+        
+        try {
+            const resp = await fetch("/api/speakers?work_dir=" + encodeURIComponent(result.work_dir));
+            if (!resp.ok) {
+                throw new Error("Không thể tải danh sách nhân vật");
+            }
+            const data = await resp.json();
+            renderSpeakerConfig(data);
+            
+            document.getElementById("speaker-config-card").scrollIntoView({ behavior: "smooth" });
+        } catch (err) {
+            alert("Lỗi tải nhân vật: " + err.message);
+        }
+    }
+
+    async function resumePipelineWithSpeakers() {
+        if (!currentWorkDir) {
+            alert("Lỗi: Không tìm thấy thư mục làm việc hiện tại.");
+            return;
+        }
+        
+        const speakerMap = {};
+        const rows = document.querySelectorAll(".speaker-row");
+        let hasError = false;
+        
+        rows.forEach(row => {
+            const speaker = row.getAttribute("data-speaker");
+            const select = row.querySelector(".character-voice-select");
+            const customInput = row.querySelector(".custom-voice-input");
+            
+            let voiceId = select.value;
+            if (voiceId === "custom") {
+                voiceId = customInput.value.trim();
+                if (!voiceId) {
+                    alert(`Vui lòng nhập Voice ID cho nhân vật ${speaker}`);
+                    hasError = true;
+                    customInput.focus();
+                }
+            }
+            speakerMap[speaker] = voiceId;
+        });
+        
+        if (hasError) return;
+        
+        const btnResume = document.getElementById("btn-resume-speakers");
+        const originalText = btnResume.textContent;
+        btnResume.disabled = true;
+        btnResume.textContent = "Đang gửi cấu hình...";
+        
+        const payload = {
+            resume_dir: currentWorkDir,
+            speaker_map: speakerMap,
+            source_lang: document.getElementById("src-lang").value,
+            voice: activeVoice,
+            bg_mode: activeBgMode,
+            bg_duck_db: parseFloat(document.getElementById("bg-gain").value),
+            publish_youtube: document.getElementById("pub-youtube").checked,
+            publish_facebook: document.getElementById("pub-facebook").checked,
+            burn_subtitles: document.getElementById("burn-subtitles").checked
+        };
+        
+        try {
+            const resp = await fetch("/api/run", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!resp.ok) {
+                const errorData = await resp.json();
+                throw new Error(errorData.detail || "Không thể resume pipeline");
+            }
+            
+            const data = await resp.json();
+            activeTaskId = data.task_id;
+            
+            document.getElementById("speaker-config-card").style.display = "none";
+            document.getElementById("status-card").style.display = "flex";
+            
+            const consoleEl = document.getElementById("terminal-log");
+            consoleEl.innerHTML += `<div class="terminal-line info">Đã gửi cấu hình giọng nhân vật. Tiếp tục chạy lồng tiếng (Task ID: ${activeTaskId})...</div>`;
+            
+            resetProgressSteps();
+            startPolling();
+            
+        } catch (err) {
+            alert("Lỗi: " + err.message);
+        } finally {
+            btnResume.disabled = false;
+            btnResume.textContent = originalText;
+        }
+    }
+
     // Reset UI progress tracker
     function resetProgressSteps() {
         document.getElementById("progress-bar").style.width = "0%";
-        for (let i = 1; i <= 7; i++) {
+        for (let i = 1; i <= 8; i++) {
             const el = document.getElementById("step-" + i);
             el.classList.remove("active", "completed");
         }
@@ -881,6 +1138,9 @@
             } else if (data.status === "translate_pending") {
                 clearInterval(pollIntervalId);
                 handlePipelinePendingTranslation(data.result);
+            } else if (data.status === "speaker_pending") {
+                clearInterval(pollIntervalId);
+                handlePipelinePendingSpeaker(data.result);
             }
 
         } catch (err) {
@@ -913,17 +1173,18 @@
             .replace(/'/g, "&#039;");
     }
 
-    // Map current pipeline steps to the 7 UI progress points
+    // Map current pipeline steps to the 8 UI progress points
     function updateProgressTracker(stepName, status) {
         const stepMap = {
             "STEP 1": 1, // Acquiring video
             "STEP 2": 2, // Extracting audio
             "STEP 2.5": 2, // Vocal separation
             "STEP 3": 3, // Transcribing (ASR)
+            "STEP 4.5": 5, // Speaker detection
             "STEP 4": 4, // Translating
-            "STEP 5": 5, // Synthesizing (TTS)
-            "STEP 6": 6, // Merging audio
-            "STEP 7": 7  // Merging video / publishing
+            "STEP 5": 6, // Synthesizing (TTS)
+            "STEP 6": 7, // Merging audio
+            "STEP 7": 8  // Merging video / publishing
         };
 
         let activeStepNum = 1;
@@ -934,21 +1195,21 @@
             }
         }
 
-        if (stepName === "Completed") activeStepNum = 7;
+        if (stepName === "Completed") activeStepNum = 8;
 
         // Fill bar
-        const fillPercent = ((activeStepNum - 1) / 6) * 100;
+        const fillPercent = ((activeStepNum - 1) / 7) * 100;
         document.getElementById("progress-bar").style.width = fillPercent + "%";
 
         // Style steps
-        for (let i = 1; i <= 7; i++) {
+        for (let i = 1; i <= 8; i++) {
             const el = document.getElementById("step-" + i);
             el.classList.remove("active", "completed");
             
             if (i < activeStepNum) {
                 el.classList.add("completed");
             } else if (i === activeStepNum) {
-                if (status === "success" && i === 7) {
+                if (status === "success" && i === 8) {
                     el.classList.add("completed");
                 } else if (status === "failed") {
                     el.classList.add("active"); // shows failed step
@@ -972,6 +1233,9 @@
         } else if (status === "translate_pending") {
             badge.style.color = "#fbbf24";
             badge.innerHTML = `⚠ Đợi dịch`;
+        } else if (status === "speaker_pending") {
+            badge.style.color = "#fbbf24";
+            badge.innerHTML = `⚠ Đợi chọn giọng`;
         }
     }
 

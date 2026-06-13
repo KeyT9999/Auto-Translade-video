@@ -26,6 +26,16 @@ OUTPUT_DIR = os.getenv("OUTPUT_DIR", "./output")
 VIETNAMESE_API_KEY = os.getenv("VIETNAMESE_API_KEY", "")
 VIETNAMESE_VOICEID_MALE = os.getenv("VIETNAMESE_VOICEID_MALE", "")
 VIETNAMESE_VOICEID_FEMALE = os.getenv("VIETNAMESE_VOICEID_FEMALE", "")
+VOICE_NARRATOR = os.getenv("VOICE_NARRATOR", "").strip()
+
+# Map character name (UPPERCASE) to voice ID. Format in .env: CHAR1:id1,CHAR2:id2
+VOICE_CHARACTER_MAP = {}
+_char_map_str = os.getenv("VOICE_CHARACTER_MAP", "")
+if _char_map_str:
+    for _item in _char_map_str.split(","):
+        if ":" in _item:
+            _k, _v = _item.split(":", 1)
+            VOICE_CHARACTER_MAP[_k.strip().upper()] = _v.strip()
 LUCYLAB_API_URL = os.getenv("LUCYLAB_API_URL", "https://api.lucylab.io/json-rpc")
 VIETNAMESE_TTS_MAX_SPEED = float(os.getenv("VIETNAMESE_TTS_MAX_SPEED", "1.3"))
 # Slow down factor for Vietnamese audio (0.82 = 18% slower, 1.0 = no change)

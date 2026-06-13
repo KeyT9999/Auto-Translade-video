@@ -26,6 +26,7 @@ from src.video_merger import merge_video
 from src.translate_pending import write_hint as _write_translate_pending_hint
 from src.srt_generator import generate_srt
 from src.content_generator import generate_content
+from src.speaker_detector import detect_speakers, get_voice_id_for_segment
 
 logger = setup_logging("pipeline_vi")
 
@@ -188,6 +189,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Upload final video to Facebook Page",
     )
+    parser.add_argument(
+        "--pause-for-speakers",
+        action="store_true",
+        help="Pause pipeline after speaker detection for manual voice mapping",
+    )
+    parser.add_argument(
+        "--burn-subtitles",
+        action="store_true",
+        help="Burn Vietnamese subtitles into the output video",
+    )
 
     args = parser.parse_args()
     if args.no_bg_music:
@@ -269,6 +280,9 @@ def run_pipeline_vi(
     bg_duck_db: float = -12.0,
     publish_youtube: bool = False,
     publish_facebook: bool = False,
+    pause_for_speakers: bool = False,
+    speaker_map: dict | None = None,
+    burn_subtitles: bool = False,
 ) -> dict:
     start_time = time.time()
 
@@ -367,11 +381,53 @@ def run_pipeline_vi(
             logger.warning("Translation pending — see TRANSLATE_PENDING.txt in work dir")
             return {"status": "translate_pending", "work_dir": work_dir}
 
+    # --- Step 4.5: Speaker / Character Detection ---
+    logger.info("=" * 60)
+    logger.info("STEP 4.5: Detecting speakers (character identification)")
+    speaker_path = os.path.join(work_dir, "transcript_vi.json")  # overwrite with speaker info
+    # Only re-detect if speakers haven't been assigned yet (resume-friendly)
+    if segments and "speaker" not in segments[0]:
+        segments = detect_speakers(segments)
+        # Persist updated transcript with speaker fields
+        with open(speaker_path, "w", encoding="utf-8") as f:
+            json.dump(segments, f, ensure_ascii=False, indent=2)
+        logger.info(f"Speaker info written to: {speaker_path}")
+    else:
+        logger.info("Speaker info already present in transcript — skipping detection.")
+
+    # Check if we should pause for manual speaker configuration
+    if pause_for_speakers:
+        voice_map_path = os.path.join(work_dir, "voice_character_map.json")
+        if not os.path.exists(voice_map_path) and not speaker_map:
+            logger.warning("Pipeline paused: Waiting for manual speaker voice assignment in UI.")
+            return {"status": "speaker_pending", "work_dir": work_dir}
+
     # --- Step 5: TTS for each segment (LucyLab API) ---
     logger.info("=" * 60)
     logger.info("STEP 5: Synthesizing Vietnamese audio (LucyLab TTS)")
     seg_dir = ensure_dir(os.path.join(work_dir, "segments"))
     tts_results = []
+
+    # Save speaker_map to voice_character_map.json if provided
+    if speaker_map:
+        voice_map_path = os.path.join(work_dir, "voice_character_map.json")
+        try:
+            with open(voice_map_path, "w", encoding="utf-8") as f:
+                json.dump(speaker_map, f, ensure_ascii=False, indent=2)
+            logger.info(f"Saved custom speaker map to {voice_map_path}")
+        except Exception as e:
+            logger.error(f"Failed to save custom speaker map: {e}")
+
+    # Load custom voice character map if exists in work_dir
+    voice_map_path = os.path.join(work_dir, "voice_character_map.json")
+    voice_map = {}
+    if os.path.exists(voice_map_path):
+        try:
+            with open(voice_map_path, "r", encoding="utf-8") as f:
+                voice_map = json.load(f)
+            logger.info(f"Loaded custom voice map: {voice_map}")
+        except Exception as e:
+            logger.error(f"Failed to load custom voice map: {e}")
 
     for seg in segments:
         seg_path = os.path.join(seg_dir, f"seg_{seg['id']:03d}.wav")
@@ -388,11 +444,28 @@ def run_pipeline_vi(
                 f"target {seg['duration']:.1f}s)"
             )
         else:
+            # Pick voice based on speaker gender (falls back to global voice_id)
+            seg_voice_id = get_voice_id_for_segment(seg, voice_id, voice_map=voice_map)
+            speaker_label = seg.get('speaker', '')
+            gender_label = seg.get('speaker_gender', '')
+            if speaker_label:
+                mapped_by = "default fallback"
+                if voice_map and speaker_label in voice_map:
+                    mapped_by = "custom UI map"
+                elif hasattr(config, "VOICE_CHARACTER_MAP") and config.VOICE_CHARACTER_MAP and speaker_label in config.VOICE_CHARACTER_MAP:
+                    mapped_by = "config map"
+                elif speaker_label == "NARRATOR" and getattr(config, "VOICE_NARRATOR", ""):
+                    mapped_by = "narrator fallback"
+                
+                logger.info(
+                    f"  Segment {seg['id']} [{speaker_label}/{gender_label}]: "
+                    f"voice_id={seg_voice_id} ({mapped_by})"
+                )
             result = synthesize_segment_vi(
                 text_vi=seg["text_vi"],
                 output_path=seg_path,
                 target_duration=seg["duration"],
-                voice_id=voice_id,
+                voice_id=seg_voice_id,
             )
             logger.info(
                 f"  Segment {seg['id']}: {result['actual_duration']:.1f}s "
@@ -443,7 +516,8 @@ def run_pipeline_vi(
         logger.info("=" * 60)
         logger.info("STEP 7: Creating dubbed video")
         dubbed_video_path = os.path.join(work_dir, "dubbed_video.mp4")
-        merge_video(video_path, merged_audio_path, dubbed_video_path)
+        srt_path = os.path.join(work_dir, "transcript_vi.srt") if burn_subtitles else None
+        merge_video(video_path, merged_audio_path, dubbed_video_path, srt_path=srt_path)
 
     # --- Step 8: Generate thumbnails + YouTube metadata ---
     content_result = {"thumbnails": [], "metadata": {}}
@@ -562,6 +636,8 @@ def main():
             bg_duck_db=args.bg_duck_db,
             publish_youtube=args.publish_youtube,
             publish_facebook=args.publish_facebook,
+            pause_for_speakers=args.pause_for_speakers,
+            burn_subtitles=args.burn_subtitles,
         )
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)

@@ -41,15 +41,21 @@ class TaskLogHandler(logging.Handler):
             self.handleError(record)
 
 
+from typing import Optional, Dict
+
 class PipelineRequest(BaseModel):
-    url: str = None
-    file_path: str = None
+    url: Optional[str] = None
+    file_path: Optional[str] = None
     source_lang: str = "en-US"
     voice: str = "female"  # male or female
     bg_mode: str = "demucs"  # demucs, duck, none
     bg_duck_db: float = -12.0
     publish_youtube: bool = False
     publish_facebook: bool = False
+    resume_dir: Optional[str] = None
+    pause_for_speakers: bool = False
+    speaker_map: Optional[Dict[str, str]] = None
+    burn_subtitles: bool = False
 
 
 def execute_pipeline(task_id: str, req: PipelineRequest):
@@ -89,17 +95,24 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
             voice_id=voice_id,
             skip_video=False,
             output_dir=os.path.join(config.OUTPUT_DIR, "VN"),
-            resume_dir=None,
+            resume_dir=req.resume_dir,
             bg_mode=req.bg_mode,
             bg_duck_db=req.bg_duck_db,
             publish_youtube=req.publish_youtube,
             publish_facebook=req.publish_facebook,
+            pause_for_speakers=req.pause_for_speakers,
+            speaker_map=req.speaker_map,
+            burn_subtitles=req.burn_subtitles,
         )
 
         with tasks_lock:
             if isinstance(report, dict) and report.get("status") == "translate_pending":
                 tasks[task_id]["status"] = "translate_pending"
                 tasks[task_id]["progress_step"] = "STEP 4: Translation Pending"
+                tasks[task_id]["result"] = report
+            elif isinstance(report, dict) and report.get("status") == "speaker_pending":
+                tasks[task_id]["status"] = "speaker_pending"
+                tasks[task_id]["progress_step"] = "STEP 4.5: Speaker Pending"
                 tasks[task_id]["result"] = report
             else:
                 tasks[task_id]["status"] = "success"
@@ -118,8 +131,8 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
 
 @app.post("/api/run")
 def run_pipeline(req: PipelineRequest, background_tasks: BackgroundTasks):
-    if not req.url and not req.file_path:
-        raise HTTPException(status_code=400, detail="Either video URL or local file path is required")
+    if not req.url and not req.file_path and not req.resume_dir:
+        raise HTTPException(status_code=400, detail="Either video URL, local file path, or resume directory is required")
         
     task_id = str(uuid.uuid4())
     background_tasks.add_task(execute_pipeline, task_id, req)
@@ -151,6 +164,37 @@ def get_status(task_id: str):
         "result": task["result"],
         "error": task["error"],
         "logs": task["logs"]
+    }
+
+
+@app.get("/api/speakers")
+def get_speakers(work_dir: str):
+    if not work_dir:
+        raise HTTPException(status_code=400, detail="work_dir parameter is required")
+        
+    transcript_path = os.path.join(work_dir, "transcript_vi.json")
+    if not os.path.exists(transcript_path):
+        raise HTTPException(status_code=404, detail="transcript_vi.json not found in work directory")
+        
+    try:
+        import json
+        with open(transcript_path, "r", encoding="utf-8") as f:
+            segments = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read transcript: {e}")
+        
+    speakers = {}
+    for s in segments:
+        sp_name = s.get("speaker")
+        if sp_name:
+            speakers[sp_name] = s.get("speaker_gender", "neutral")
+            
+    result = [{"speaker": k, "gender": v} for k, v in speakers.items()]
+    return {
+        "speakers": result,
+        "work_dir": work_dir,
+        "default_male": getattr(config, "VIETNAMESE_VOICEID_MALE", ""),
+        "default_female": getattr(config, "VIETNAMESE_VOICEID_FEMALE", ""),
     }
 
 

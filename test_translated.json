@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "text": "我们脆皮乳哥快点上呗",
+    "start": 0,
+    "end": 1.36,
+    "duration": 1.36,
+    "text_vi": "Nhanh lên nào."
+  },
+  {
+    "id": 2,
+    "text": "好的先生我去给您催一下",
+    "start": 1.36,
+    "end": 2.88,
+    "duration": 1.52,
+    "text_vi": "Được rồi, mình đi催一下."
+  },
+  {
+    "id": 3,
+    "text": "马上好了先生",
+    "start": 5.28,
+    "end": 6.16,
+    "duration": 0.88,
+    "text_vi": "Sắp xong rồi."
+  },
+  {
+    "id": 4,
+    "text": "又留了一圈",
+    "start": 6.16,
+    "end": 7.04,
+    "duration": 0.88,
+    "text_vi": "Lại chậm nữa."
+  },
+  {
+    "id": 5,
+    "text": "不然呢我催后厨",
+    "start": 7.04,
+    "end": 8.12,
+    "duration": 1.08,
+    "text_vi": "Không thì mình催 nhé."
+  },
+  {
+    "id": 6,
+    "text": "不得骂死我呀",
+    "start": 8.12,
+    "end": 8.84,
+    "duration": 0.72,
+    "text_vi": "Hả."
+  },
+  {
+    "id": 7,
+    "text": "试试呢",
+    "start": 8.84,
+    "end": 9.4,
+    "duration": 0.56,
+    "text_vi": "Á."
+  },
+  {
+    "id": 8,
+    "text": "后厨后厨",
+    "start": 10,
+    "end": 10.6,
+    "duration": 0.6,
+    "text_vi": "Hả."
+  },
+  {
+    "id": 9,
+    "text": "小满包房的脆皮乳哥加急呗",
+    "start": 10.6,
+    "end": 12.16,
+    "duration": 1.56,
+    "text_vi": "Nhanh lên nào, mình cần gấp."
+  },
+  {
+    "id": 10,
+    "text": "催催催催啥催啊",
+    "start": 12.16,
+    "end": 13.44,
+    "duration": 1.28,
+    "text_vi": "Cứ催 thôi."
+  }
+]

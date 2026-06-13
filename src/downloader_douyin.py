@@ -1,20 +1,18 @@
-"""Douyin downloader using a headless Chromium (Playwright).
+"""Douyin downloader — primary strategy: yt-dlp Python module.
 
-Background: as of 2025+ yt-dlp's Douyin/TikTok extractor is broken because the
-detail endpoint (`/aweme/v1/web/aweme/detail/`) requires an `a_bogus` /
-`msToken` / `x-secsdk-web-signature` signature triplet that yt-dlp cannot
-generate — every request returns an empty body and the extractor surfaces
-"Fresh cookies (not necessarily logged in) are needed".
+Strategy order:
+  1. yt-dlp (python -m yt_dlp) — fastest, no browser needed, works great for Douyin
+  2. Playwright headless Chromium — fallback when yt-dlp fails
+  3. Playwright visible Chromium — last resort
 
-Workaround: load the video page in a real browser (no login needed), intercept
-the DASH segment requests it issues to `*.zjcdn.com/.../media-video-*/` and
-`media-audio-*/`, then download those direct CDN URLs with `requests` and mux
-them with ffmpeg.
-
-Requires: playwright + chromium (`pip install playwright && playwright install
-chromium`), ffmpeg on PATH.
+Requires:
+  pip install playwright yt-dlp
+  playwright install chromium
+  ffmpeg on PATH.
 """
+import json
 import re
+import sys
 import subprocess
 import time
 import urllib.parse
@@ -29,15 +27,31 @@ logger = setup_logging("downloader_douyin")
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 _REFERER = "https://www.douyin.com/"
 
 _DASH_VIDEO_RE = re.compile(r"/media-video-")
 _DASH_AUDIO_RE = re.compile(r"/media-audio-")
-_CDN_HOST_RE = re.compile(r"\.(zjcdn|douyinvod|douyincdn)\.com|\.bytecdntp\.com")
+_CDN_HOST_RE = re.compile(r"\.(zjcdn|douyinvod|douyincdn)\.com|\.bytecdntp\.com|v\d+\.muscdn\.com")
 _VIDEO_MIME_RE = re.compile(r"mime_type=video_mp4")
 _VIDEO_ID_RE = re.compile(r"/video/(\d+)")
+
+# Stealth JS: mask all common automation indicators that Douyin checks
+_STEALTH_JS = """
+() => {
+    // Remove webdriver flag
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    // Fake plugins
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    // Fake languages
+    Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+    // Remove cdc_ automation vars
+    delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+    delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+    delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+}
+"""
 
 
 def is_douyin_url(url: str) -> bool:
@@ -45,6 +59,17 @@ def is_douyin_url(url: str) -> bool:
         return False
     host = urllib.parse.urlparse(url.strip()).netloc.lower()
     return host == "douyin.com" or host.endswith(".douyin.com")
+
+
+def normalize_douyin_url(url: str) -> str:
+    """Rewrite any Douyin URL with modal_id= to direct /video/<id> URL."""
+    m = re.search(r"modal_id=(\d+)", url)
+    if m:
+        video_id = m.group(1)
+        new_url = f"https://www.douyin.com/video/{video_id}"
+        logger.info(f"Normalizing Douyin URL: {url} -> {new_url}")
+        return new_url
+    return url
 
 
 def _bitrate_of(url: str) -> int:
@@ -57,35 +82,37 @@ def _bitrate_of(url: str) -> int:
 
 def _extract_via_playwright(
     url: str,
-    wait_seconds: float = 20.0,
+    wait_seconds: float = 30.0,
     headless: bool = True,
 ) -> dict:
-    """Open the Douyin page and capture direct CDN URLs for video + audio.
-
-    Douyin detects vanilla headless Chromium and refuses to start the player
-    (the browser sits on the page but never fetches media segments). We launch
-    with `--disable-blink-features=AutomationControlled` and a fully populated
-    UA + viewport to look like a real browser. If that still fails on a
-    particular host, callers can pass `headless=False` to fall back to a
-    visible window.
-    """
+    """Open the Douyin page in stealth Chromium and intercept CDN video URLs."""
     launch_args = [
         "--disable-blink-features=AutomationControlled",
         "--disable-features=IsolateOrigins,site-per-process",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--disable-extensions",
+        "--lang=zh-CN",
     ]
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, args=launch_args)
         context = browser.new_context(
             user_agent=_UA,
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 1280, "height": 800},
             locale="zh-CN",
+            timezone_id="Asia/Shanghai",
+            extra_http_headers={
+                "Accept-Language": "zh-CN,zh;q=0.9",
+            },
         )
-        # Hide webdriver flag — Douyin checks navigator.webdriver
-        context.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
-        )
-        page = context.new_page()
+        # Inject stealth scripts before any page code runs
+        context.add_init_script(_STEALTH_JS)
 
+        page = context.new_page()
         captured = {"dash_video": [], "dash_audio": [], "progressive": []}
 
         def on_request(req):
@@ -93,26 +120,49 @@ def _extract_via_playwright(
             if not _CDN_HOST_RE.search(u):
                 return
             if _DASH_VIDEO_RE.search(u):
-                captured["dash_video"].append(u)
+                if u not in captured["dash_video"]:
+                    captured["dash_video"].append(u)
+                    logger.debug(f"Captured DASH video: {u[:80]}")
             elif _DASH_AUDIO_RE.search(u):
-                captured["dash_audio"].append(u)
+                if u not in captured["dash_audio"]:
+                    captured["dash_audio"].append(u)
+                    logger.debug(f"Captured DASH audio: {u[:80]}")
             elif _VIDEO_MIME_RE.search(u):
-                captured["progressive"].append(u)
+                if u not in captured["progressive"]:
+                    captured["progressive"].append(u)
+                    logger.debug(f"Captured progressive: {u[:80]}")
 
         page.on("request", on_request)
 
-        logger.info(f"Loading Douyin page: {url}")
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        logger.info(f"Loading Douyin page (headless={headless}): {url}")
+        try:
+            # Use "commit" — fires as soon as the HTTP response starts; earlier than domcontentloaded
+            # This lets us start capturing video requests immediately
+            page.goto(url, wait_until="commit", timeout=30000)
+            logger.info("Page navigation committed. Waiting for media streams...")
+        except Exception as e:
+            logger.warning(f"page.goto issue: {type(e).__name__}. Continuing to wait for media streams...")
 
+        # Wait up to wait_seconds for CDN streams to appear
         deadline = time.time() + wait_seconds
         while time.time() < deadline:
             if captured["progressive"] or (captured["dash_video"] and captured["dash_audio"]):
+                logger.info("Media streams captured — stopping early.")
                 break
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(800)
 
-        title = page.title() or ""
+        title = ""
+        try:
+            title = page.title() or ""
+        except Exception:
+            pass
         title = re.sub(r"\s*[-–]\s*抖音\s*$", "", title).strip()
-        canonical = page.url
+        canonical = url  # use normalized URL as canonical
+
+        try:
+            canonical = page.url
+        except Exception:
+            pass
 
         browser.close()
 
@@ -143,13 +193,76 @@ def _extract_via_playwright(
             "audio_url": max(captured["dash_audio"], key=_bitrate_of),
         }
 
-    raise RuntimeError(
-        f"No usable video stream captured from Douyin page (canonical={canonical})"
-    )
+    return None  # Signal failure without raising
+
+
+def _extract_via_ytdlp(url: str) -> dict | None:
+    """Primary extraction via yt-dlp Python module (python -m yt_dlp).
+
+    yt-dlp's Douyin extractor works reliably without a browser.
+    Uses sys.executable so we always use the same Python environment.
+    """
+    logger.info(f"Extracting via yt-dlp: {url}")
+    try:
+        cmd = [
+            sys.executable, "-m", "yt_dlp",
+            "--no-warnings",
+            "--quiet",
+            "--no-check-certificates",
+            "--dump-json",
+            "--no-playlist",
+            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo[ext=mp4]/best[ext=mp4]/best",
+            url,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode != 0:
+            logger.warning(f"yt-dlp failed: {result.stderr[:300]}")
+            return None
+
+        info = json.loads(result.stdout.strip().splitlines()[-1])
+
+        # Get the direct URL
+        video_url = info.get("url") or info.get("webpage_url")
+        requested_formats = info.get("requested_formats", [])
+
+        if requested_formats and len(requested_formats) >= 2:
+            # Separate video and audio streams
+            v_url = requested_formats[0].get("url", "")
+            a_url = requested_formats[1].get("url", "")
+            if v_url and a_url:
+                logger.info(f"yt-dlp extracted DASH streams: video={v_url[:60]}...")
+                return {
+                    "mode": "dash",
+                    "canonical_url": info.get("webpage_url", url),
+                    "video_id": str(info.get("id", "")),
+                    "title": info.get("title", ""),
+                    "video_url": v_url,
+                    "audio_url": a_url,
+                }
+        elif video_url:
+            logger.info(f"yt-dlp extracted progressive: {video_url[:60]}...")
+            return {
+                "mode": "progressive",
+                "canonical_url": info.get("webpage_url", url),
+                "video_id": str(info.get("id", "")),
+                "title": info.get("title", ""),
+                "video_url": video_url,
+            }
+    except subprocess.TimeoutExpired:
+        logger.warning("yt-dlp timed out.")
+    except Exception as e:
+        logger.warning(f"yt-dlp extraction error: {e}")
+
+    return None
 
 
 def _download_stream(url: str, dest: Path) -> int:
-    headers = {"User-Agent": _UA, "Referer": _REFERER}
+    headers = {
+        "User-Agent": _UA,
+        "Referer": _REFERER,
+        "Accept": "*/*",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+    }
     size = 0
     with requests.get(url, headers=headers, stream=True, timeout=120) as r:
         r.raise_for_status()
@@ -190,29 +303,8 @@ def _ffprobe_duration(path: Path) -> float:
         return 0.0
 
 
-def download_douyin(
-    url: str,
-    output_dir: str,
-    filename: str | None = None,
-) -> dict:
-    """Download a Douyin video and return metadata matching download_one() shape.
-
-    Returned dict keys:
-        input_url, canonical_url, platform, video_id, title, uploader,
-        duration, filepath
-    """
-    if not url:
-        raise ValueError("URL cannot be empty")
-
-    ensure_dir(output_dir)
-
-    info = _extract_via_playwright(url)
-    video_id = info["video_id"] or "unknown"
-
-    out_dir = Path(output_dir)
-    name = filename or f"Douyin_{video_id}.mp4"
-    final_path = out_dir / name
-
+def _download_info(info: dict, out_dir: Path, video_id: str, final_path: Path) -> None:
+    """Download video from an extracted info dict (either progressive or dash)."""
     if info["mode"] == "progressive":
         logger.info(f"Downloading progressive MP4 id={video_id}")
         size = _download_stream(info["video_url"], final_path)
@@ -235,15 +327,68 @@ def download_douyin(
                     except OSError:
                         pass
 
+
+def download_douyin(
+    url: str,
+    output_dir: str,
+    filename: str | None = None,
+) -> dict:
+    """Download a Douyin video and return metadata matching download_one() shape.
+
+    Strategy:
+      1. Playwright (headless stealth Chromium) — intercept CDN requests
+      2. Playwright (visible window) — if headless blocked
+      3. yt-dlp — final fallback
+
+    Returned dict keys:
+        input_url, canonical_url, platform, video_id, title, uploader,
+        duration, filepath
+    """
+    if not url:
+        raise ValueError("URL cannot be empty")
+
+    url = normalize_douyin_url(url)
+    ensure_dir(output_dir)
+    out_dir = Path(output_dir)
+
+    # --- Strategy 1: yt-dlp (fastest, no browser needed) ---
+    info = _extract_via_ytdlp(url)
+
+    # --- Strategy 2: Headless Playwright (if yt-dlp fails) ---
+    if not info:
+        logger.warning("yt-dlp failed. Trying headless Playwright...")
+        info = _extract_via_playwright(url, wait_seconds=30.0, headless=True)
+
+    # --- Strategy 3: Visible Playwright (last resort) ---
+    if not info:
+        logger.warning("Headless Playwright also failed. Trying visible browser...")
+        info = _extract_via_playwright(url, wait_seconds=35.0, headless=False)
+
+    if not info:
+        raise RuntimeError(
+            f"All download strategies failed for: {url}\n"
+            "Possible causes:\n"
+            "  - Network cannot reach douyin.com (blocked in your region)\n"
+            "  - VPN or proxy is needed\n"
+            "  - Video is private or geo-restricted\n"
+            "Try opening the URL manually in a browser first."
+        )
+
+    video_id = info.get("video_id") or "unknown"
+    name = filename or f"Douyin_{video_id}.mp4"
+    final_path = out_dir / name
+
+    _download_info(info, out_dir, video_id, final_path)
+
     duration = _ffprobe_duration(final_path)
     logger.info(f"Saved: {final_path} ({duration:.1f}s)")
 
     return {
         "input_url": url,
-        "canonical_url": info["canonical_url"],
+        "canonical_url": info.get("canonical_url", url),
         "platform": "Douyin",
         "video_id": video_id,
-        "title": info["title"],
+        "title": info.get("title", ""),
         "uploader": "",
         "duration": duration,
         "filepath": str(final_path),

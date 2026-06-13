@@ -1,0 +1,55 @@
+import os
+import json
+import pytest
+from fastapi.testclient import TestClient
+from web_server import app
+import config
+
+client = TestClient(app)
+
+def test_speakers_endpoint(tmp_path):
+    # Prepare dummy transcript_vi.json in a temp work dir
+    work_dir = str(tmp_path)
+    transcript_data = [
+        {"id": 1, "text": "Hello", "text_vi": "Xin chào", "speaker": "NV_CHINH", "speaker_gender": "male"},
+        {"id": 2, "text": "Hi", "text_vi": "Chào", "speaker": "NV_PHU", "speaker_gender": "female"},
+        {"id": 3, "text": "Narration", "text_vi": "Dẫn chuyện", "speaker": "NARRATOR", "speaker_gender": "neutral"},
+    ]
+    
+    transcript_path = os.path.join(work_dir, "transcript_vi.json")
+    with open(transcript_path, "w", encoding="utf-8") as f:
+        json.dump(transcript_data, f, ensure_ascii=False, indent=2)
+        
+    # Query /api/speakers
+    response = client.get(f"/api/speakers?work_dir={work_dir}")
+    assert response.status_code == 200
+    data = response.json()
+    
+    speakers_list = data["speakers"]
+    assert len(speakers_list) == 3
+    
+    speakers_map = {item["speaker"]: item["gender"] for item in speakers_list}
+    assert speakers_map["NV_CHINH"] == "male"
+    assert speakers_map["NV_PHU"] == "female"
+    assert speakers_map["NARRATOR"] == "neutral"
+    
+    assert data["default_male"] == config.VIETNAMESE_VOICEID_MALE
+    assert data["default_female"] == config.VIETNAMESE_VOICEID_FEMALE
+
+def test_run_pipeline_missing_args():
+    response = client.post("/api/run", json={"source_lang": "en-US"})
+    assert response.status_code == 400
+    assert "Either video URL, local file path, or resume directory is required" in response.json()["detail"]
+
+def test_run_pipeline_with_url_success(monkeypatch):
+    # Mock execute_pipeline to do nothing
+    monkeypatch.setattr("web_server.execute_pipeline", lambda task_id, req: None)
+    
+    response = client.post("/api/run", json={
+        "url": "https://www.youtube.com/watch?v=mock",
+        "source_lang": "en-US",
+        "pause_for_speakers": True,
+        "burn_subtitles": True
+    })
+    assert response.status_code == 200
+    assert "task_id" in response.json()
