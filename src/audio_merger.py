@@ -4,6 +4,7 @@ import subprocess
 
 from pydub import AudioSegment
 
+import config
 from src.utils import setup_logging, ensure_dir
 
 logger = setup_logging("audio_merger")
@@ -167,6 +168,14 @@ def merge_segments(
         f"Audio merged ({bg_label}): {output_path} "
         f"({len(segments)} segments, {total_duration:.1f}s)"
     )
+
+    # Normalize loudness to prevent clipping / distortion
+    normalize_audio(
+        output_path,
+        target_lufs=config.AUDIO_TARGET_LUFS,
+        true_peak=config.AUDIO_TRUE_PEAK,
+    )
+
     return output_path
 
 
@@ -196,3 +205,61 @@ def _load_background(
     elif len(bg) > total_ms:
         bg = bg[:total_ms]
     return bg
+
+
+def normalize_audio(
+    audio_path: str,
+    target_lufs: float = -15.0,
+    true_peak: float = -1.0,
+    lra: float = 7.0,
+) -> str:
+    """Normalize audio loudness using ffmpeg ``loudnorm`` filter (1-pass).
+
+    Overwrites ``audio_path`` in-place.  Writes to a temporary file first so a
+    failed run never leaves a truncated output.
+
+    Args:
+        audio_path: Path to the WAV file to normalize.
+        target_lufs: Target integrated loudness in LUFS (default -15.0).
+        true_peak: Maximum true peak in dBTP (default -1.0).
+        lra: Target loudness range (default 7.0).
+
+    Returns:
+        The same ``audio_path`` after normalization.
+    """
+    if not os.path.exists(audio_path):
+        logger.warning(f"normalize_audio: file not found: {audio_path}")
+        return audio_path
+
+    tmp_path = audio_path + ".norm.wav"
+    filter_str = (
+        f"loudnorm=I={target_lufs}:TP={true_peak}:LRA={lra}"
+    )
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", audio_path,
+        "-af", filter_str,
+        "-ar", str(config.AUDIO_SAMPLE_RATE),
+        "-ac", "1",
+        "-acodec", "pcm_s16le",
+        tmp_path,
+    ]
+    logger.info(
+        f"Normalizing audio: target {target_lufs} LUFS, "
+        f"true peak {true_peak} dBTP → {audio_path}"
+    )
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error(
+            f"loudnorm failed (non-fatal, keeping original): "
+            f"{result.stderr[-300:]}"
+        )
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return audio_path
+
+    # Replace original with normalized version
+    os.replace(tmp_path, audio_path)
+    logger.info(f"Audio normalized successfully: {audio_path}")
+    return audio_path
+

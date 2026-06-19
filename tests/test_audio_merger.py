@@ -96,23 +96,23 @@ def test_merge_segments_missing_background_falls_back(tmp_path):
 
 
 def test_merge_segments_applies_background_gain(tmp_path):
-    """In duck mode the original audio is reduced by N dB before overlay."""
-    seg_dir = str(tmp_path / "segments")
-    os.makedirs(seg_dir)
+    """In duck mode the original audio is reduced by N dB before overlay.
+
+    Since merge_segments() now applies loudnorm normalization at the end,
+    both full-volume and ducked outputs converge to the same LUFS target.
+    We therefore test the gain application via the internal _load_background
+    helper, which is called before normalization.
+    """
+    from src.audio_merger import _load_background
+
     bg_path = str(tmp_path / "original_audio.wav")
     _save_tone(bg_path, freq=440, duration_ms=3000)
 
-    full_output = str(tmp_path / "full.wav")
-    quiet_output = str(tmp_path / "quiet.wav")
+    full = _load_background(bg_path, 3000, gain_db=0.0)
+    quiet = _load_background(bg_path, 3000, gain_db=-12.0)
 
-    merge_segments([], seg_dir, full_output, total_duration=3.0,
-                   background_path=bg_path)
-    merge_segments([], seg_dir, quiet_output, total_duration=3.0,
-                   background_path=bg_path, background_gain_db=-12.0)
-
-    full = AudioSegment.from_wav(full_output)
-    quiet = AudioSegment.from_wav(quiet_output)
     # -12 dB should drop loudness noticeably; allow a 1 dB tolerance for the
     # round-trip through pydub + 16-bit PCM export
     assert quiet.dBFS < full.dBFS - 10
     assert abs(len(quiet) / 1000.0 - 3.0) < 0.1
+

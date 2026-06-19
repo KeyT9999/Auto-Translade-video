@@ -25,6 +25,7 @@ def merge_video(video_path: str, audio_path: str, output_path: str, srt_path: st
             "-c:a", "aac",
             "-map", "0:v",
             "-map", "1:a",
+            "-shortest",
             "-y",
             output_path,
         ]
@@ -37,6 +38,7 @@ def merge_video(video_path: str, audio_path: str, output_path: str, srt_path: st
             "-c:v", "copy",
             "-map", "0:v",
             "-map", "1:a",
+            "-shortest",
             "-y",
             output_path,
         ]

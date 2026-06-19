@@ -4,143 +4,307 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auto-Translade Video AI</title>
-    <!-- Premium Google Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <meta name="description" content="Hệ thống tự động lồng tiếng Việt và xuất bản video tối ưu SEO">
+    <!-- Typography: VT323 (display), JetBrains Mono (telemetry), Inter (body) -->
+    <link href="https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400&family=Inter:wght@400&display=swap" rel="stylesheet">
     <style>
+        /* ============================================
+           DESIGN TOKENS — Max Yinger Terminal System
+           ============================================ */
         :root {
-            --bg-base: #0a051b;
-            --bg-glass: rgba(15, 10, 35, 0.45);
-            --border-glass: rgba(255, 255, 255, 0.08);
-            --primary: #8a2be2;
-            --primary-glow: rgba(138, 43, 226, 0.4);
-            --secondary: #00ffff;
-            --secondary-glow: rgba(0, 255, 255, 0.3);
-            --text-main: #f5f3ff;
-            --text-muted: #a78bfa;
-            --success: #10b981;
-            --error: #ef4444;
-            --card-radius: 20px;
+            /* Colors */
+            --color-midnight-carbon: #12130f;
+            --color-bone-glow: #e4dfda;
+            --color-charcoal-vein: #4e4f4a; /* Lighter charcoal for better border contrast */
+            --color-rose-quartz-bloom: #f5c2c8;
+
+            /* Surfaces */
+            --surface-canvas: #12130f;
+            --surface-panel: #1b1c18; /* Subtle panel background for grouping */
+            --primary-panel-bg: #171814;
+
+            /* Blue Accent for Light Theme */
+            --color-accent-blue: #0263e0;
+            --color-accent-blue-bg: rgba(2, 99, 224, 0.08);
+
+            /* Theme Elements Defaults (Dark Theme) */
+            --color-active-border: var(--color-bone-glow);
+            --color-active-bg: rgba(228, 223, 218, 0.1);
+            --color-active-text: var(--color-bone-glow);
+            
+            --color-cta-bg: var(--color-bone-glow);
+            --color-cta-text: var(--color-midnight-carbon);
+            
+            --step-active-border: var(--color-rose-quartz-bloom);
+            --step-active-text: var(--color-rose-quartz-bloom);
+            
+            --url-input-bg: #0d0e0c;
+            --terminal-bg: #0d0e0c;
+            --pulse-color: rgba(245, 194, 200, 0.4);
+            --terminal-step-color: var(--color-rose-quartz-bloom);
+
+            /* Typography */
+            --font-display: 'VT323', monospace;
+            --font-telemetry: 'JetBrains Mono', monospace;
+            --font-body: 'Inter', sans-serif;
+
+            /* Type Scale */
+            --text-caption: 12px;
+            --text-body: 16px;
+            --text-subheading: 24px;
+            --text-display: 48px;
+
+            /* Spacing */
+            --spacing-4: 4px;
+            --spacing-8: 8px;
+            --spacing-12: 12px;
+            --spacing-16: 16px;
+            --spacing-24: 24px;
+            --spacing-32: 32px;
+            --spacing-64: 64px;
+
+            /* Border Radius */
+            --radius-none: 0px;
+            --radius-sm: 2px;
+            --radius-full: 9999px;
+
+            /* Transitions */
+            --transition-fast: 150ms ease;
+
+            /* Status */
+            --color-success: #a3d9a5;
+            --color-error: #e07070;
+            --color-warning: #d4aa60;
         }
 
-        * {
+        body.light-theme {
+            --surface-canvas: #ffffff;
+            --surface-panel: #fcfbf9;
+            --primary-panel-bg: #ffffff;
+            --color-midnight-carbon: #ffffff;
+            --color-bone-glow: #12130f;
+            --color-charcoal-vein: #e0dfda;
+
+            /* Override active selections with light theme blue style */
+            --color-active-border: var(--color-accent-blue);
+            --color-active-bg: var(--color-accent-blue-bg);
+            --color-active-text: var(--color-accent-blue);
+
+            --color-cta-bg: var(--color-accent-blue);
+            --color-cta-text: #ffffff;
+
+            --step-active-border: var(--color-accent-blue);
+            --step-active-text: var(--color-accent-blue);
+
+            --url-input-bg: #ffffff;
+            --terminal-bg: #f5f5f2;
+            --pulse-color: rgba(2, 99, 224, 0.3);
+            --terminal-step-color: #c54a57;
+        }
+
+        /* ============================================
+           RESET & BASE
+           ============================================ */
+        *, *::before, *::after {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
 
         body {
-            font-family: 'Outfit', sans-serif;
-            background: radial-gradient(circle at 50% 50%, #1e0b36 0%, var(--bg-base) 70%);
-            color: var(--text-main);
+            font-family: var(--font-body);
+            font-weight: 400;
+            font-size: var(--text-body);
+            line-height: 1.35;
+            background: var(--surface-canvas);
+            color: var(--color-bone-glow);
             min-height: 100vh;
-            padding: 40px 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
+        /* ============================================
+           LAYOUT — Constrained width, centered
+           ============================================ */
         .container {
             width: 100%;
-            max-width: 960px;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: var(--spacing-32) var(--spacing-24);
             display: flex;
             flex-direction: column;
-            gap: 30px;
+            gap: var(--spacing-32);
         }
 
-        /* Glassmorphism Header */
-        header {
-            text-align: center;
-            padding: 20px;
-            background: var(--bg-glass);
-            backdrop-filter: blur(15px);
-            border: 1px solid var(--border-glass);
-            border-radius: var(--card-radius);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        @media (min-width: 768px) {
+            .container {
+                padding: var(--spacing-64) var(--spacing-32);
+            }
         }
 
-        header h1 {
-            font-size: 2.8rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #c084fc 0%, var(--secondary) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 0 30px var(--primary-glow);
-            letter-spacing: 1px;
-            margin-bottom: 5px;
-        }
-
-        header p {
-            color: var(--text-muted);
-            font-size: 1.1rem;
-            font-weight: 300;
-        }
-
-        /* Cards Style */
-        .card {
-            background: var(--bg-glass);
-            backdrop-filter: blur(15px);
-            border: 1px solid var(--border-glass);
-            border-radius: var(--card-radius);
-            padding: 30px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .card:hover {
-            border-color: rgba(255, 255, 255, 0.15);
-            box-shadow: 0 12px 40px 0 rgba(138, 43, 226, 0.15);
-        }
-
-        .card-title {
-            font-size: 1.4rem;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #d8b4fe;
-            border-left: 4px solid var(--secondary);
-            padding-left: 12px;
+        /* ============================================
+           HEADER — Wordmark + Telemetry
+           ============================================ */
+        .site-header {
             display: flex;
-            align-items: center;
-            justify-content: space-between;
+            flex-direction: column;
+            gap: var(--spacing-8);
+            padding-bottom: var(--spacing-24);
+            border-bottom: 1px solid var(--color-charcoal-vein);
         }
 
-        /* Input Fields */
+        .wordmark {
+            font-family: var(--font-display);
+            font-size: var(--text-display);
+            font-weight: 400;
+            line-height: 0.85;
+            color: var(--color-bone-glow);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .header-telemetry {
+            font-family: var(--font-body);
+            font-size: 14px;
+            line-height: 1.3;
+            color: var(--color-bone-glow);
+            opacity: 0.8;
+        }
+
+        /* ============================================
+           PANEL CARDS — Visual grouping containers
+           ============================================ */
+        .panel-card {
+            background: var(--surface-panel);
+            border: 1px solid var(--color-charcoal-vein);
+            padding: var(--spacing-24);
+            border-radius: var(--radius-none);
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-16);
+        }
+
+        .panel-card.primary-panel {
+            border: 2px solid var(--color-bone-glow);
+            background: var(--primary-panel-bg);
+        }
+
+        .panel-subtitle {
+            font-family: var(--font-body);
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-bone-glow);
+            border-bottom: 1px solid var(--color-charcoal-vein);
+            padding-bottom: var(--spacing-8);
+            margin-bottom: var(--spacing-4);
+        }
+
+        /* ============================================
+           SECTION — Container layout
+           ============================================ */
+        .section {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-24);
+        }
+
+        .section-title {
+            font-family: var(--font-body);
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--color-bone-glow);
+            padding-bottom: var(--spacing-8);
+            border-bottom: 1px solid var(--color-charcoal-vein);
+        }
+
+        /* ============================================
+           FORM ELEMENTS
+           ============================================ */
         .form-group {
-            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-8);
         }
 
-        .form-group label {
-            display: block;
-            font-size: 0.95rem;
+        .form-label {
+            font-family: var(--font-body);
+            font-size: 14px;
             font-weight: 500;
-            margin-bottom: 8px;
-            color: #c084fc;
+            color: var(--color-bone-glow);
+            opacity: 0.9;
+        }
+
+        .form-label.main-focus-label {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-bone-glow);
+            opacity: 1;
         }
 
         .input-text {
             width: 100%;
-            padding: 14px 18px;
-            background: rgba(10, 5, 25, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            color: var(--text-main);
-            font-size: 1rem;
-            font-family: inherit;
-            transition: all 0.25s ease;
+            padding: var(--spacing-12) var(--spacing-16);
+            background: transparent;
+            border: 1px solid var(--color-charcoal-vein);
+            border-radius: var(--radius-none);
+            color: var(--color-bone-glow);
+            font-family: var(--font-body);
+            font-size: var(--text-body);
+            line-height: 1.35;
+            transition: border-color var(--transition-fast);
+        }
+
+        .input-text.url-input {
+            font-size: 17px;
+            padding: var(--spacing-16);
+            background: var(--url-input-bg);
+            border-color: var(--color-charcoal-vein);
         }
 
         .input-text:focus {
             outline: none;
-            border-color: var(--secondary);
-            box-shadow: 0 0 15px var(--secondary-glow);
-            background: rgba(10, 5, 25, 0.85);
+            border-color: var(--color-bone-glow);
         }
 
-        /* Control Options Grid */
+        .input-text::placeholder {
+            color: #6c6c66; /* Lightened placeholder for visibility */
+        }
+
+        .select-custom {
+            width: 100%;
+            padding: var(--spacing-12);
+            background: var(--surface-canvas);
+            border: 1px solid var(--color-charcoal-vein);
+            border-radius: var(--radius-none);
+            color: var(--color-bone-glow);
+            font-family: var(--font-body);
+            font-size: var(--text-body);
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e4dfda' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px;
+            transition: border-color var(--transition-fast);
+        }
+
+        .select-custom:focus {
+            outline: none;
+            border-color: var(--color-bone-glow);
+        }
+
+        .select-custom option {
+            background: var(--color-midnight-carbon);
+            color: var(--color-bone-glow);
+        }
+
+        /* ============================================
+           OPTIONS GRID
+           ============================================ */
         .options-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
+            gap: var(--spacing-24);
         }
 
         @media (max-width: 600px) {
@@ -149,68 +313,55 @@
             }
         }
 
-        .select-custom {
-            width: 100%;
-            padding: 14px 18px;
-            background: rgba(10, 5, 25, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            color: var(--text-main);
-            font-size: 1rem;
-            font-family: inherit;
-            cursor: pointer;
-            appearance: none;
-            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a78bfa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 18px center;
-            background-size: 18px;
-            transition: all 0.25s ease;
-        }
-
-        .select-custom:focus {
-            outline: none;
-            border-color: var(--secondary);
-            box-shadow: 0 0 15px var(--secondary-glow);
-        }
-
-        /* Custom Options Card */
+        /* ============================================
+           PILL BUTTONS — Option selectors
+           ============================================ */
         .option-card-group {
             display: flex;
-            gap: 12px;
+            gap: var(--spacing-8);
         }
 
         .option-btn {
             flex: 1;
-            padding: 12px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            color: var(--text-muted);
-            font-size: 0.95rem;
+            padding: var(--spacing-12) var(--spacing-16);
+            background: transparent;
+            border: 1px solid var(--color-charcoal-vein);
+            border-radius: var(--radius-full);
+            color: var(--color-bone-glow);
+            opacity: 0.7;
+            font-family: var(--font-body);
+            font-size: 13px;
             font-weight: 500;
             cursor: pointer;
             text-align: center;
-            transition: all 0.2s ease;
+            transition: opacity var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
         }
 
         .option-btn:hover {
-            background: rgba(255, 255, 255, 0.07);
-            color: var(--text-main);
+            opacity: 0.95;
+            border-color: var(--color-bone-glow);
         }
 
         .option-btn.active {
-            background: linear-gradient(135deg, rgba(138, 43, 226, 0.25) 0%, rgba(0, 255, 255, 0.1) 100%);
-            border-color: var(--secondary);
-            color: var(--text-main);
-            box-shadow: 0 0 12px rgba(0, 255, 255, 0.15);
+            opacity: 1;
+            border-color: var(--color-active-border);
+            background: var(--color-active-bg);
+            color: var(--color-active-text);
         }
 
-        /* Checkbox Toggles */
+        /* ============================================
+           TOGGLE CHECKBOXES — Minimal
+           ============================================ */
         .toggle-group {
-            display: flex;
-            gap: 20px;
-            margin: 10px 0 25px 0;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--spacing-12);
+        }
+
+        @media (max-width: 600px) {
+            .toggle-group {
+                grid-template-columns: 1fr;
+            }
         }
 
         .checkbox-container {
@@ -218,18 +369,19 @@
             align-items: center;
             cursor: pointer;
             user-select: none;
-            font-size: 0.95rem;
-            color: #d8b4fe;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 10px 16px;
-            border-radius: 12px;
-            transition: all 0.2s ease;
+            font-family: var(--font-body);
+            font-size: 14px;
+            color: var(--color-bone-glow);
+            opacity: 0.85;
+            padding: var(--spacing-12) var(--spacing-16);
+            border: 1px solid var(--color-charcoal-vein);
+            border-radius: var(--radius-full);
+            transition: opacity var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
         }
 
         .checkbox-container:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: rgba(255, 255, 255, 0.1);
+            opacity: 1;
+            border-color: var(--color-bone-glow);
         }
 
         .checkbox-container input {
@@ -237,46 +389,58 @@
         }
 
         .checkmark {
-            width: 18px;
-            height: 18px;
-            border: 2px solid var(--text-muted);
-            border-radius: 5px;
-            margin-right: 10px;
+            width: 16px;
+            height: 16px;
+            border: 1px solid var(--color-charcoal-vein);
+            border-radius: var(--radius-sm);
+            margin-right: var(--spacing-12);
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            transition: all var(--transition-fast);
+            flex-shrink: 0;
         }
 
-        .checkbox-container input:checked + .checkmark {
-            background-color: var(--secondary);
-            border-color: var(--secondary);
-            box-shadow: 0 0 8px var(--secondary-glow);
+        .checkbox-container input:checked ~ .checkmark {
+            background-color: var(--color-active-border);
+            border-color: var(--color-active-border);
         }
 
-        .checkbox-container input:checked + .checkmark::after {
+        .checkbox-container input:checked ~ .checkmark::after {
             content: "✓";
-            color: var(--bg-base);
-            font-size: 12px;
-            font-weight: 700;
+            color: var(--color-midnight-carbon);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1;
         }
 
-        /* Collapsible Section */
+        .checkbox-container:has(input:checked) {
+            opacity: 1;
+            border-color: var(--color-active-border);
+            background: var(--color-active-bg);
+            color: var(--color-active-text);
+        }
+
+        /* ============================================
+           ACCORDION — Collapsible advanced settings
+           ============================================ */
         .accordion-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            color: var(--text-muted);
-            font-size: 0.95rem;
+            font-family: var(--font-body);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--color-bone-glow);
+            opacity: 0.8;
             cursor: pointer;
-            padding: 10px 0;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-            margin-top: 15px;
-            transition: color 0.2s ease;
+            padding: var(--spacing-16) 0 0 0;
+            border-top: 1px solid var(--color-charcoal-vein);
+            transition: opacity var(--transition-fast);
         }
 
         .accordion-header:hover {
-            color: var(--text-main);
+            opacity: 1;
         }
 
         .accordion-content {
@@ -288,77 +452,105 @@
         .accordion-content.open {
             max-height: 500px;
             transition: max-height 0.3s cubic-bezier(1, 0, 1, 0);
-            padding-top: 15px;
+            padding-top: var(--spacing-16);
         }
 
-        /* Large Action Button */
+        /* ============================================
+           ACTION BUTTON — Solid bone primary CTA
+           ============================================ */
         .btn-run {
             width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, var(--primary) 0%, #a855f7 100%);
-            border: none;
-            border-radius: 12px;
-            color: var(--text-main);
-            font-size: 1.15rem;
+            padding: var(--spacing-16);
+            background: var(--color-cta-bg);
+            border: 1px solid var(--color-cta-bg);
+            border-radius: var(--radius-full);
+            color: var(--color-cta-text);
+            font-family: var(--font-body);
+            font-size: 16px;
             font-weight: 600;
+            letter-spacing: -0.2px;
             cursor: pointer;
-            box-shadow: 0 4px 15px var(--primary-glow);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
             position: relative;
-            overflow: hidden;
+            margin-top: var(--spacing-8);
         }
 
         .btn-run:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(138, 43, 226, 0.6);
-            background: linear-gradient(135deg, #9b4de6 0%, #b86ff8 100%);
+            background: transparent;
+            color: var(--color-cta-bg);
         }
 
         .btn-run:active {
-            transform: translateY(1px);
+            opacity: 0.8;
         }
 
-        .btn-run::after {
-            content: "";
-            position: absolute;
-            top: 0; left: -100%; width: 100%; height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            transition: all 0.5s ease;
+        .btn-run:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            background: var(--color-cta-bg);
+            color: var(--color-cta-text);
         }
 
-        .btn-run:hover::after {
-            left: 100%;
+        .btn-run:disabled:hover {
+            background: var(--color-bone-glow);
+            color: var(--color-midnight-carbon);
         }
 
-        /* Status Details */
+        /* ============================================
+           STATUS CONTAINER
+           ============================================ */
         .status-container {
-            display: none; /* Shown dynamically */
+            display: none;
             flex-direction: column;
-            gap: 20px;
+            gap: var(--spacing-24);
         }
 
-        /* Progress Tracker */
+        .status-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .status-badge {
+            font-family: var(--font-telemetry);
+            font-size: var(--text-caption);
+            letter-spacing: -0.6px;
+            color: var(--color-bone-glow);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-8);
+            text-transform: uppercase;
+        }
+
+        /* ============================================
+           PROGRESS TRACKER — Minimal dots + line
+           ============================================ */
         .progress-track {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             position: relative;
-            margin-bottom: 20px;
-            padding: 0 10px;
+            padding: 0 var(--spacing-8);
+            margin: var(--spacing-12) 0;
         }
 
         .progress-track::before {
             content: "";
             position: absolute;
-            top: 15px; left: 0; right: 0; height: 3px;
-            background: rgba(255, 255, 255, 0.1);
+            top: 13px; /* 26px circle diameter / 2 */
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--color-charcoal-vein);
             z-index: 1;
         }
 
         .progress-fill {
             position: absolute;
-            top: 15px; left: 0; height: 3px;
-            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            top: 13px;
+            left: 0;
+            height: 1px;
+            background: var(--color-bone-glow);
             width: 0%;
             z-index: 2;
             transition: width 0.4s ease;
@@ -370,102 +562,149 @@
             align-items: center;
             position: relative;
             z-index: 3;
-            width: 70px;
+            width: 60px;
         }
 
         .step-circle {
-            width: 32px;
-            height: 32px;
+            width: 26px;
+            height: 26px;
             border-radius: 50%;
-            background: #1e1b4b;
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            color: var(--text-muted);
+            background: var(--surface-canvas);
+            border: 1px solid var(--color-charcoal-vein);
+            color: var(--color-charcoal-vein);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.85rem;
-            font-weight: 600;
+            font-family: var(--font-telemetry);
+            font-size: 11px;
             transition: all 0.3s ease;
         }
 
         .step.active .step-circle {
-            background: var(--bg-base);
-            border-color: var(--secondary);
-            color: var(--secondary);
-            box-shadow: 0 0 15px var(--secondary-glow);
-            transform: scale(1.1);
-            animation: pulse 1.8s infinite;
+            border-color: var(--color-rose-quartz-bloom);
+            color: var(--color-rose-quartz-bloom);
+            animation: pulse-dot 2s infinite;
         }
 
         .step.completed .step-circle {
-            background: var(--success);
-            border-color: var(--success);
-            color: #fff;
+            background: var(--color-bone-glow);
+            border-color: var(--color-bone-glow);
+            color: var(--color-midnight-carbon);
+            font-weight: 600;
         }
 
         .step-label {
-            font-size: 0.75rem;
-            font-weight: 500;
-            margin-top: 8px;
-            color: var(--text-muted);
+            font-family: var(--font-body);
+            font-size: 11px;
+            margin-top: var(--spacing-8);
+            color: var(--color-charcoal-vein);
             text-align: center;
             white-space: nowrap;
         }
 
         .step.active .step-label {
-            color: var(--secondary);
-            font-weight: 600;
+            color: var(--color-rose-quartz-bloom);
+            font-weight: 500;
         }
 
         .step.completed .step-label {
-            color: var(--success);
+            color: var(--color-bone-glow);
+            opacity: 0.8;
         }
 
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(0, 255, 255, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(0, 255, 255, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(0, 255, 255, 0); }
+        @keyframes pulse-dot {
+            0%, 100% { box-shadow: 0 0 0 0 var(--pulse-color); }
+            50% { box-shadow: 0 0 0 6px rgba(128, 128, 128, 0); }
         }
 
-        /* Console Terminal Simulator */
+        /* ============================================
+           TERMINAL — Console log panel
+           ============================================ */
         .terminal-panel {
-            background: #040209;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            padding: 20px;
-            height: 250px;
+            background: var(--terminal-bg);
+            border: 1px solid var(--color-charcoal-vein);
+            border-radius: var(--radius-none);
+            padding: var(--spacing-16);
+            height: 240px;
             overflow-y: auto;
-            font-family: 'Fira Code', monospace;
-            font-size: 0.85rem;
-            color: #d1c4e9;
+            font-family: var(--font-telemetry);
+            font-size: 12px;
+            color: var(--color-bone-glow);
             line-height: 1.5;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+            letter-spacing: -0.3px;
+        }
+
+        .terminal-panel::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .terminal-panel::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .terminal-panel::-webkit-scrollbar-thumb {
+            background: var(--color-charcoal-vein);
         }
 
         .terminal-line {
-            margin-bottom: 4px;
+            margin-bottom: 2px;
             white-space: pre-wrap;
             border-left: 2px solid transparent;
-            padding-left: 8px;
+            padding-left: var(--spacing-8);
+            opacity: 0.8;
         }
 
-        .terminal-line.info { border-left-color: var(--secondary); }
-        .terminal-line.warning { border-left-color: #f59e0b; color: #f59e0b; }
-        .terminal-line.error { border-left-color: var(--error); color: var(--error); }
-        .terminal-line.step-log { border-left-color: var(--primary); color: #c084fc; font-weight: 500; }
+        .terminal-line.info {
+            border-left-color: var(--color-charcoal-vein);
+        }
 
-        /* Output Card styling */
+        .terminal-line.warning {
+            border-left-color: var(--color-warning);
+            color: var(--color-warning);
+        }
+
+        .terminal-line.error {
+            border-left-color: var(--color-error);
+            color: var(--color-error);
+        }
+
+        .terminal-line.step-log {
+            border-left-color: var(--terminal-step-color);
+            color: var(--terminal-step-color);
+            opacity: 1;
+        }
+
+        /* ============================================
+           INDICATOR PULSE
+           ============================================ */
+        .indicator-pulse {
+            width: 6px;
+            height: 6px;
+            background-color: var(--color-rose-quartz-bloom);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: var(--spacing-8);
+            animation: pulse-indicator 1.5s infinite;
+        }
+
+        @keyframes pulse-indicator {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* ============================================
+           OUTPUT — Results section
+           ============================================ */
         .output-container {
-            display: none; /* Shown dynamically */
+            display: none;
             flex-direction: column;
-            gap: 25px;
+            gap: var(--spacing-24);
         }
 
         .video-player {
             width: 100%;
-            border-radius: 12px;
-            border: 1px solid var(--border-glass);
-            box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+            border: 1px solid var(--color-charcoal-vein);
+            border-radius: var(--radius-none);
             background: #000;
         }
 
@@ -473,196 +712,484 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 12px;
+            border: 1px solid var(--color-charcoal-vein);
+            border-radius: var(--radius-none);
+            padding: var(--spacing-16);
         }
 
         .published-link span {
-            font-weight: 500;
-            color: #a7f3d0;
+            font-family: var(--font-body);
+            font-size: var(--text-body);
+            color: var(--color-bone-glow);
+            opacity: 0.9;
         }
 
         .published-link a {
-            color: var(--secondary);
+            color: var(--color-bone-glow);
             text-decoration: none;
-            font-weight: 600;
-            border-bottom: 1px dashed var(--secondary);
-            transition: all 0.2s ease;
+            font-family: var(--font-body);
+            font-size: var(--text-body);
+            font-weight: 500;
+            border-bottom: 2px solid var(--color-bone-glow);
+            transition: opacity var(--transition-fast);
         }
 
         .published-link a:hover {
-            color: #fff;
-            border-color: #fff;
+            opacity: 0.7;
         }
 
+        /* ============================================
+           METADATA BOXES
+           ============================================ */
         .metadata-box {
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 15px;
+            border-top: 1px solid var(--color-charcoal-vein);
+            padding: var(--spacing-16) 0;
             position: relative;
         }
 
         .metadata-box h4 {
-            font-size: 0.95rem;
-            color: #d8b4fe;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            font-family: var(--font-body);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-bone-glow);
+            opacity: 0.85;
+            margin-bottom: var(--spacing-8);
         }
 
         .metadata-text {
-            font-size: 0.95rem;
-            line-height: 1.6;
-            color: var(--text-main);
+            font-family: var(--font-body);
+            font-size: 14px;
+            line-height: 1.45;
+            color: var(--color-bone-glow);
             white-space: pre-wrap;
         }
 
         .btn-copy {
             position: absolute;
-            top: 15px; right: 15px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            padding: 5px 10px;
-            border-radius: 6px;
-            color: var(--text-muted);
-            font-size: 0.8rem;
+            top: var(--spacing-16);
+            right: 0;
+            background: transparent;
+            border: 1px solid var(--color-charcoal-vein);
+            padding: var(--spacing-6) var(--spacing-16);
+            border-radius: var(--radius-full);
+            color: var(--color-bone-glow);
+            font-family: var(--font-body);
+            font-size: 11px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all var(--transition-fast);
         }
 
         .btn-copy:hover {
-            background: var(--secondary);
-            color: var(--bg-base);
-            border-color: var(--secondary);
+            background: var(--color-bone-glow);
+            color: var(--color-midnight-carbon);
+            border-color: var(--color-bone-glow);
         }
 
-        .indicator-pulse {
-            width: 10px; height: 10px;
-            background-color: var(--secondary);
+        /* ============================================
+           SPEAKER CONFIG CARD
+           ============================================ */
+        .speaker-config-section {
+            display: none;
+            flex-direction: column;
+            gap: var(--spacing-16);
+        }
+
+        .speaker-row {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-12);
+            padding: var(--spacing-16);
+            border: 1px solid var(--color-charcoal-vein);
+            background: var(--surface-panel);
+        }
+
+        .speaker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .speaker-name {
+            font-family: var(--font-body);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-bone-glow);
+        }
+
+        .gender-badge {
+            font-family: var(--font-body);
+            font-size: 11px;
+            font-weight: 500;
+            padding: var(--spacing-4) var(--spacing-8);
+            border-radius: var(--radius-full);
+            border: 1px solid var(--color-charcoal-vein);
+            color: var(--color-bone-glow);
+            opacity: 0.85;
+        }
+
+        /* ============================================
+           SECTION DIVIDER
+           ============================================ */
+        .divider {
+            border: none;
+            border-top: 1px solid var(--color-charcoal-vein);
+        }
+
+        /* ============================================
+           RESUME BUTTON VARIANT
+           ============================================ */
+        .btn-run.btn-resume {
+            border-color: var(--color-success);
+            background: var(--color-success);
+            color: var(--color-midnight-carbon);
+        }
+
+        .btn-run.btn-resume:hover {
+            background: transparent;
+            color: var(--color-success);
+        }
+
+        /* ============================================
+           TOAST NOTIFICATION
+           ============================================ */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: var(--spacing-12) var(--spacing-24);
+            background: var(--color-bone-glow);
+            color: var(--color-midnight-carbon);
+            font-family: var(--font-body);
+            font-size: 14px;
+            font-weight: 500;
+            border-radius: var(--radius-full);
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.error {
+            background: var(--color-error);
+            color: var(--color-bone-glow);
+        }
+
+        /* ============================================
+           LIVE CLOCK — Telemetry accent
+           ============================================ */
+        .live-clock {
+            font-family: var(--font-display);
+            font-size: 28px;
+            line-height: 1;
+            color: var(--color-bone-glow);
+            opacity: 0.5;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        /* ============================================
+           SETUP WIZARD HEADER & NAVIGATION
+           ============================================ */
+        .setup-steps-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--spacing-8);
+            background: var(--surface-panel);
+            border: 1px solid var(--color-charcoal-vein);
+            padding: var(--spacing-16) var(--spacing-24);
+        }
+
+        .setup-step {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-12);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .setup-step-num {
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-            box-shadow: 0 0 8px var(--secondary);
-            animation: pulse-simple 1.5s infinite;
+            border: 1px solid var(--color-charcoal-vein);
+            color: var(--color-charcoal-vein);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-telemetry);
+            font-size: 12px;
+            font-weight: 600;
+            transition: all var(--transition-fast);
         }
 
-        @keyframes pulse-simple {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 255, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(0, 255, 255, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 255, 0); }
+        .setup-step-text {
+            font-family: var(--font-body);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--color-bone-glow);
+            opacity: 0.5;
+            transition: all var(--transition-fast);
+        }
+
+        .setup-step-line {
+            flex: 1;
+            height: 1px;
+            background: var(--color-charcoal-vein);
+            margin: 0 var(--spacing-16);
+            min-width: 20px;
+        }
+
+        /* Active State */
+        .setup-step.active .setup-step-num {
+            background: var(--color-bone-glow);
+            border-color: var(--color-bone-glow);
+            color: var(--color-midnight-carbon);
+        }
+
+        .setup-step.active .setup-step-text {
+            opacity: 1;
+            font-weight: 600;
+        }
+
+        /* Completed State */
+        .setup-step.completed .setup-step-num {
+            background: var(--color-success);
+            border-color: var(--color-success);
+            color: var(--color-midnight-carbon);
+        }
+
+        .setup-step.completed .setup-step-text {
+            opacity: 0.8;
+        }
+
+        /* Navigation Buttons Panel */
+        .wizard-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: var(--spacing-8);
+            gap: var(--spacing-16);
+            width: 100%;
+        }
+
+        .btn-run.btn-back {
+            background: transparent;
+            border: 1px solid var(--color-charcoal-vein);
+            color: var(--color-bone-glow);
+        }
+
+        .btn-run.btn-back:hover {
+            border-color: var(--color-bone-glow);
+            background: rgba(228, 223, 218, 0.05);
+        }
+
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 600px) {
+            .wordmark {
+                font-size: 32px;
+            }
+
+            .live-clock {
+                font-size: 20px;
+            }
+
+            .container {
+                padding: var(--spacing-16);
+                gap: var(--spacing-24);
+            }
+
+            .step {
+                width: 40px;
+            }
+
+            .step-label {
+                font-size: 8px;
+            }
+
+            .setup-step-text {
+                display: none; /* Hide text on mobile */
+            }
+
+            .setup-step-line {
+                margin: 0 var(--spacing-8);
+            }
+
+            .wizard-nav {
+                flex-direction: column-reverse;
+                gap: var(--spacing-8);
+            }
+
+            .wizard-nav .btn-run {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- Header -->
-    <header>
-        <h1>Auto-Translade AI</h1>
-        <p>Hệ thống tự động lồng tiếng Việt và xuất bản video tối ưu SEO</p>
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Header — Wordmark + Telemetry -->
+    <header class="site-header">
+        <div class="header-row">
+            <div>
+                <h1 class="wordmark">Auto-Translade AI</h1>
+                <p class="header-telemetry">Hệ thống lồng tiếng tự động · Xuất bản tối ưu SEO</p>
+            </div>
+            <div style="display: flex; align-items: flex-end; gap: var(--spacing-8); flex-direction: column;">
+                <div class="live-clock" id="live-clock"></div>
+                <button type="button" class="theme-toggle-btn" id="theme-toggle-btn" onclick="toggleTheme()" style="background: transparent; border: 1px solid var(--color-charcoal-vein); color: var(--color-bone-glow); font-family: var(--font-body); font-size: 11px; padding: 4px 12px; border-radius: var(--radius-full); cursor: pointer; transition: all var(--transition-fast); display: flex; align-items: center; gap: var(--spacing-4);">
+                    <span id="theme-icon">☀</span> <span id="theme-text">Giao diện Sáng</span>
+                </button>
+            </div>
+        </div>
     </header>
 
-    <!-- Control Card -->
-    <section class="card" id="control-card">
-        <div class="card-title">Cấu hình Dubbing</div>
-
-        <!-- URL Input -->
-        <div class="form-group">
-            <label for="video-url">URL Video nguồn (YouTube, TikTok, Douyin...)</label>
-            <input type="text" id="video-url" class="input-text" placeholder="https://www.youtube.com/watch?v=..." value="">
+    <!-- Control Section (Setup Wizard) -->
+    <section class="section" id="control-card">
+        <!-- Setup Wizard Progress Header -->
+        <div class="setup-steps-header">
+            <div class="setup-step active" id="setup-tab-1" onclick="goToStep(1)">
+                <div class="setup-step-num">1</div>
+                <div class="setup-step-text">Nguồn Video</div>
+            </div>
+            <div class="setup-step-line"></div>
+            <div class="setup-step" id="setup-tab-2" onclick="goToStep(2)">
+                <div class="setup-step-num">2</div>
+                <div class="setup-step-text">Cấu hình</div>
+            </div>
+            <div class="setup-step-line"></div>
+            <div class="setup-step" id="setup-tab-3" onclick="goToStep(3)">
+                <div class="setup-step-num">3</div>
+                <div class="setup-step-text">Xuất bản</div>
+            </div>
         </div>
 
-        <!-- Options Grid -->
-        <div class="options-grid">
-            <!-- Voice selection -->
+        <!-- Step 1: Nguồn Video (Primary Block) -->
+        <div class="panel-card primary-panel" id="setup-panel-1">
             <div class="form-group">
-                <label>Giọng đọc lồng tiếng</label>
-                <div class="option-card-group" id="voice-group">
-                    <button type="button" class="option-btn active" data-val="female">Nữ (Female)</button>
-                    <button type="button" class="option-btn" data-val="male">Nam (Male)</button>
-                </div>
+                <label class="form-label main-focus-label" for="video-url">Nguồn Video (YouTube, TikTok, Facebook, Douyin...)</label>
+                <input type="text" id="video-url" class="input-text url-input" placeholder="Dán đường dẫn video tại đây..." value="">
             </div>
-
-            <!-- BG Separator Mode -->
-            <div class="form-group">
-                <label>Xử lý nhạc nền (BGM)</label>
-                <div class="option-card-group" id="bg-group">
-                    <button type="button" class="option-btn active" data-val="demucs">Tách AI (Demucs)</button>
-                    <button type="button" class="option-btn" data-val="duck">Nền nhẹ (Duck -12dB)</button>
-                    <button type="button" class="option-btn" data-val="none">Không nhạc nền</button>
-                </div>
+            <div class="wizard-nav">
+                <div></div>
+                <button type="button" class="btn-run" style="width: auto; min-width: 140px; margin-top: 0;" onclick="goToStep(2)">Tiếp tục →</button>
             </div>
         </div>
 
-        <!-- Checkbox publishing options -->
-        <div class="form-group">
-            <label>Đăng tải tự động (Auto-Publish) & Cấu hình</label>
-            <div class="toggle-group">
-                <label class="checkbox-container">
-                    <input type="checkbox" id="pub-youtube">
-                    <div class="checkmark"></div>
-                    YouTube Channel
-                </label>
-                <label class="checkbox-container">
-                    <input type="checkbox" id="pub-facebook">
-                    <div class="checkmark"></div>
-                    Facebook Page
-                </label>
-                <label class="checkbox-container">
-                    <input type="checkbox" id="pause-for-speakers">
-                    <div class="checkmark"></div>
-                    Gán giọng nhân vật thủ công (Dừng lại để chọn giọng)
-                </label>
-                <label class="checkbox-container">
-                    <input type="checkbox" id="burn-subtitles" checked>
-                    <div class="checkmark"></div>
-                    Ghi phụ đề tiếng Việt vào Video (Hardsub)
-                </label>
-            </div>
-        </div>
-
-        <!-- Advanced settings Accordion -->
-        <div class="accordion-header" onclick="toggleAdvancedSettings()">
-            <span>Thiết lập nâng cao (Ngôn ngữ nguồn, độ giảm nhạc...)</span>
-            <span id="accordion-arrow">▼</span>
-        </div>
-        <div class="accordion-content" id="advanced-settings">
+        <!-- Step 2: Cấu hình lồng tiếng & Âm thanh -->
+        <div class="panel-card" id="setup-panel-2" style="display: none;">
+            <div class="panel-subtitle">Cấu hình Dubbing & Âm thanh</div>
             <div class="options-grid">
+                <!-- Voice selection -->
                 <div class="form-group">
-                    <label for="src-lang">Ngôn ngữ gốc của Video</label>
-                    <select id="src-lang" class="select-custom">
-                        <option value="en-US">English (Tiếng Anh)</option>
-                        <option value="zh-CN">Chinese (Tiếng Trung)</option>
-                        <option value="ja-JP">Japanese (Tiếng Nhật)</option>
-                    </select>
+                    <label class="form-label">Giọng đọc ưu tiên</label>
+                    <div class="option-card-group" id="voice-group">
+                        <button type="button" class="option-btn active" data-val="female">Nữ</button>
+                        <button type="button" class="option-btn" data-val="male">Nam</button>
+                    </div>
                 </div>
+
+                <!-- BG Separator Mode -->
                 <div class="form-group">
-                    <label for="bg-gain">Ducking BGM Volume (dB)</label>
-                    <input type="number" id="bg-gain" class="input-text" value="-12" min="-30" max="0" step="1">
+                    <label class="form-label">Xử lý nhạc nền (BGM)</label>
+                    <div class="option-card-group" id="bg-group">
+                        <button type="button" class="option-btn active" data-val="demucs">Tách AI</button>
+                        <button type="button" class="option-btn" data-val="duck">Duck -12dB</button>
+                        <button type="button" class="option-btn" data-val="none">Không</button>
+                    </div>
                 </div>
             </div>
-            <div class="form-group">
-                <label for="file-path">Hoặc đường dẫn file video nội bộ (Local file path)</label>
-                <input type="text" id="file-path" class="input-text" placeholder="D:\inputs\video.mp4">
+
+            <!-- Advanced settings Accordion -->
+            <div class="accordion-header" onclick="toggleAdvancedSettings()">
+                <span>Thiết lập nâng cao</span>
+                <span id="accordion-arrow">▼</span>
+            </div>
+            <div class="accordion-content" id="advanced-settings">
+                <div class="options-grid">
+                    <div class="form-group">
+                        <label class="form-label" for="src-lang">Ngôn ngữ gốc</label>
+                        <select id="src-lang" class="select-custom">
+                            <option value="en-US">English</option>
+                            <option value="zh-CN">Chinese</option>
+                            <option value="ja-JP">Japanese</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="bg-gain">Âm lượng Ducking (dB)</label>
+                        <input type="number" id="bg-gain" class="input-text" value="-12" min="-30" max="0" step="1">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: var(--spacing-12);">
+                    <label class="form-label" for="file-path">Hoặc đường dẫn file video cục bộ</label>
+                    <input type="text" id="file-path" class="input-text" placeholder="Ví dụ: D:\inputs\video.mp4">
+                </div>
+            </div>
+            <div class="wizard-nav">
+                <button type="button" class="btn-run btn-back" style="width: auto; min-width: 140px; margin-top: 0;" onclick="goToStep(1)">← Quay lại</button>
+                <button type="button" class="btn-run" style="width: auto; min-width: 140px; margin-top: 0;" onclick="goToStep(3)">Tiếp tục →</button>
             </div>
         </div>
 
-        <!-- Action Button -->
-        <button type="button" class="btn-run" id="btn-submit" onclick="submitPipeline()">Bắt đầu xử lý lồng tiếng</button>
+        <!-- Step 3: Tự động xuất bản & Cấu hình phụ -->
+        <div class="panel-card" id="setup-panel-3" style="display: none;">
+            <div class="panel-subtitle">Tùy chọn xuất bản & Phụ đề</div>
+            <div class="form-group">
+                <div class="toggle-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="pub-youtube">
+                        <span class="checkmark"></span>
+                        Tự động đăng YouTube
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="pub-facebook">
+                        <span class="checkmark"></span>
+                        Tự động đăng Facebook
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="pause-for-speakers">
+                        <span class="checkmark"></span>
+                        Gán giọng thủ công cho từng nhân vật
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="burn-subtitles" checked>
+                        <span class="checkmark"></span>
+                        Hardsub phụ đề tiếng Việt
+                    </label>
+                </div>
+            </div>
+            <div class="wizard-nav">
+                <button type="button" class="btn-run btn-back" style="width: auto; min-width: 140px; margin-top: 0;" onclick="goToStep(2)">← Quay lại</button>
+                <button type="button" class="btn-run" id="btn-submit" style="width: auto; min-width: 220px; margin-top: 0;" onclick="submitPipeline()">Bắt đầu xử lý lồng tiếng</button>
+            </div>
+        </div>
     </section>
 
-    <!-- Status Tracker Card -->
-    <section class="card status-container" id="status-card">
-        <div class="card-title">
-            <span>Trạng thái xử lý</span>
-            <span id="status-badge" style="color: var(--secondary); font-size: 0.95rem; font-weight: 500;">
+    <!-- Status Tracker -->
+    <section class="section status-container panel-card" id="status-card">
+        <div class="status-header">
+            <div class="panel-subtitle" style="border-bottom: none; padding-bottom: 0; margin-bottom: 0;">Tiến trình xử lý</div>
+            <div class="status-badge" id="status-badge">
                 <span class="indicator-pulse"></span>Khởi chạy
-            </span>
+            </div>
         </div>
 
         <!-- Progress Steps Tracker -->
@@ -670,11 +1197,11 @@
             <div class="progress-fill" id="progress-bar"></div>
             <div class="step active" id="step-1">
                 <div class="step-circle">1</div>
-                <div class="step-label">Tải Video</div>
+                <div class="step-label">Tải</div>
             </div>
             <div class="step" id="step-2">
                 <div class="step-circle">2</div>
-                <div class="step-label">Tách Âm</div>
+                <div class="step-label">Tách</div>
             </div>
             <div class="step" id="step-3">
                 <div class="step-circle">3</div>
@@ -682,23 +1209,23 @@
             </div>
             <div class="step" id="step-4">
                 <div class="step-circle">4</div>
-                <div class="step-label">Dịch thuật</div>
+                <div class="step-label">Dịch</div>
             </div>
             <div class="step" id="step-5">
                 <div class="step-circle">5</div>
-                <div class="step-label">Nhận diện giọng</div>
+                <div class="step-label">Giọng</div>
             </div>
             <div class="step" id="step-6">
                 <div class="step-circle">6</div>
-                <div class="step-label">TTS AI</div>
+                <div class="step-label">TTS</div>
             </div>
             <div class="step" id="step-7">
                 <div class="step-circle">7</div>
-                <div class="step-label">Lồng nhạc</div>
+                <div class="step-label">Mix</div>
             </div>
             <div class="step" id="step-8">
                 <div class="step-circle">8</div>
-                <div class="step-label">Xuất bản</div>
+                <div class="step-label">Xuất</div>
             </div>
         </div>
 
@@ -708,31 +1235,28 @@
         </div>
     </section>
 
-    <!-- Speaker Configuration Card (Shown when pipeline is pending speaker assignment) -->
-    <section class="card" id="speaker-config-card" style="display: none; flex-direction: column; gap: 20px;">
-        <div class="card-title">
-            <span>Cấu hình Giọng Nhân vật</span>
-            <span style="color: #fbbf24; font-size: 0.95rem; font-weight: 500;">
-                <span class="indicator-pulse" style="background-color: #fbbf24; box-shadow: 0 0 8px #fbbf24;"></span>Đang đợi chọn giọng
-            </span>
+    <!-- Speaker Configuration (shown when pipeline is pending speaker assignment) -->
+    <section class="section speaker-config-section panel-card" id="speaker-config-card">
+        <div class="status-header">
+            <div class="panel-subtitle" style="border-bottom: none; padding-bottom: 0; margin-bottom: 0;">Cấu hình giọng nhân vật</div>
+            <div class="status-badge" style="color: var(--color-warning);">
+                <span class="indicator-pulse" style="background-color: var(--color-warning);"></span>Đợi chọn giọng
+            </div>
         </div>
-        <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 10px;">
-            Hệ thống phát hiện các nhân vật dưới đây từ transcript. Hãy gán giọng đọc tương ứng cho từng nhân vật trước khi tiếp tục.
+        <p style="font-family: var(--font-body); font-size: 14px; color: var(--color-bone-glow); opacity: 0.85;">
+            Gán giọng đọc cho từng nhân vật phát hiện được từ transcript:
         </p>
 
-        <!-- Characters Container -->
-        <div id="speakers-list-container" style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px;">
-            <!-- Rendered dynamically -->
-        </div>
+        <div id="speakers-list-container" style="display: flex; flex-direction: column; gap: var(--spacing-8);"></div>
 
-        <button type="button" class="btn-run" id="btn-resume-speakers" onclick="resumePipelineWithSpeakers()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">
-            Tiếp tục tiến trình lồng tiếng (Resume)
+        <button type="button" class="btn-run btn-resume" id="btn-resume-speakers" onclick="resumePipelineWithSpeakers()">
+            Tiếp tục lồng tiếng
         </button>
     </section>
 
-    <!-- Output Product Card -->
-    <section class="card output-container" id="output-card">
-        <div class="card-title">Kết quả Video Lồng tiếng</div>
+    <!-- Output Product -->
+    <section class="section output-container panel-card" id="output-card">
+        <div class="panel-subtitle" style="border-bottom: none; padding-bottom: 0; margin-bottom: 0;">Kết quả xử lý</div>
 
         <!-- Video Player -->
         <video id="result-video" class="video-player" controls>
@@ -743,52 +1267,126 @@
         <!-- Published Links -->
         <div id="publishing-results" style="display: none;">
             <div class="published-link" id="yt-link-container" style="display: none;">
-                <span>YouTube Video:</span>
-                <a href="" id="yt-url" target="_blank">Xem trên YouTube</a>
+                <span>YouTube</span>
+                <a href="" id="yt-url" target="_blank">Xem trên YouTube →</a>
             </div>
-            <div class="published-link" id="fb-link-container" style="display: none;">
-                <span>Facebook Video:</span>
-                <a href="" id="fb-url" target="_blank">Xem trên Facebook</a>
+            <div class="published-link" id="fb-link-container" style="display: none; margin-top: var(--spacing-8);">
+                <span>Facebook</span>
+                <a href="" id="fb-url" target="_blank">Xem trên Facebook →</a>
             </div>
         </div>
 
         <!-- Copyable Metadata -->
         <div class="form-group">
-            <label>Nội dung đăng tải đề xuất (SEO Metadata)</label>
-            
+            <label class="form-label">SEO Metadata đề xuất</label>
+
             <div class="metadata-box">
-                <h4>Tiêu đề (Title)</h4>
+                <h4>Tiêu đề</h4>
                 <button class="btn-copy" onclick="copyText('meta-title')">Copy</button>
                 <div class="metadata-text" id="meta-title">Chưa tạo</div>
             </div>
 
             <div class="metadata-box">
-                <h4>Mô tả (Description)</h4>
+                <h4>Mô tả</h4>
                 <button class="btn-copy" onclick="copyText('meta-desc')">Copy</button>
                 <div class="metadata-text" id="meta-desc">Chưa tạo</div>
             </div>
 
             <div class="metadata-box">
-                <h4>Thẻ Tags / Hashtags</h4>
+                <h4>Tags / Hashtags</h4>
                 <button class="btn-copy" onclick="copyText('meta-tags')">Copy</button>
                 <div class="metadata-text" id="meta-tags">Chưa tạo</div>
             </div>
         </div>
     </section>
+
+    <!-- Footer Telemetry -->
+    <footer style="padding-top: var(--spacing-12); border-top: 1px solid var(--color-charcoal-vein);">
+        <p class="header-telemetry" style="opacity: 0.3;">Auto-Translade AI · Pipeline v2.0 · Midnight Terminal</p>
+    </footer>
 </div>
 
 <script>
-    // Selected Options
+    // ============================================
+    // LIVE CLOCK — Telemetry accent
+    // ============================================
+    function updateClock() {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+        document.getElementById('live-clock').textContent = `${h}:${m}:${s}`;
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // ============================================
+    // TOAST NOTIFICATION (replaces alert())
+    // ============================================
+    function showToast(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.className = 'toast show' + (type === 'error' ? ' error' : '');
+        setTimeout(() => {
+            toast.className = 'toast';
+        }, 3500);
+    }
+
+    // ============================================
+    // SETUP WIZARD STATE & NAVIGATION
+    // ============================================
+    let currentSetupStep = 1;
+
+    function goToStep(stepNum) {
+        // Validation when trying to move past step 1
+        if (stepNum > 1 && currentSetupStep === 1) {
+            const urlInput = document.getElementById("video-url").value.trim();
+            const fileInput = document.getElementById("file-path").value.trim();
+            if (!urlInput && !fileInput) {
+                showToast("Vui lòng cung cấp URL Video hoặc đường dẫn file local trước!", "error");
+                return;
+            }
+        }
+
+        // Hide all step panels
+        document.getElementById("setup-panel-1").style.display = "none";
+        document.getElementById("setup-panel-2").style.display = "none";
+        document.getElementById("setup-panel-3").style.display = "none";
+
+        // Show target step panel
+        document.getElementById("setup-panel-" + stepNum).style.display = "flex";
+
+        // Update steps tabs indicators
+        for (let i = 1; i <= 3; i++) {
+            const tab = document.getElementById("setup-tab-" + i);
+            const numEl = tab.querySelector(".setup-step-num");
+            if (i === stepNum) {
+                tab.className = "setup-step active";
+                numEl.textContent = i;
+            } else if (i < stepNum) {
+                tab.className = "setup-step completed";
+                numEl.textContent = "✓";
+            } else {
+                tab.className = "setup-step";
+                numEl.textContent = i;
+            }
+        }
+
+        currentSetupStep = stepNum;
+    }
+
+    // ============================================
+    // STATE
+    // ============================================
     let activeVoice = "female";
     let activeBgMode = "demucs";
     let activeTaskId = null;
     let pollIntervalId = null;
 
-    // Button lists
+    // Button groups
     const voiceBtns = document.querySelectorAll("#voice-group button");
     const bgBtns = document.querySelectorAll("#bg-group button");
 
-    // Init option event listeners
     voiceBtns.forEach(btn => {
         btn.addEventListener("click", () => {
             voiceBtns.forEach(b => b.classList.remove("active"));
@@ -809,20 +1407,18 @@
         const content = document.getElementById("advanced-settings");
         const arrow = document.getElementById("accordion-arrow");
         content.classList.toggle("open");
-        if (content.classList.contains("open")) {
-            arrow.textContent = "▲";
-        } else {
-            arrow.textContent = "▼";
-        }
+        arrow.textContent = content.classList.contains("open") ? "▲" : "▼";
     }
 
-    // Submit request to backend
+    // ============================================
+    // SUBMIT PIPELINE
+    // ============================================
     async function submitPipeline() {
         const urlInput = document.getElementById("video-url").value.trim();
         const fileInput = document.getElementById("file-path").value.trim();
 
         if (!urlInput && !fileInput) {
-            alert("Vui lòng cung cấp URL Video hoặc đường dẫn video local!");
+            showToast("Vui lòng cung cấp URL Video hoặc đường dẫn video local!", "error");
             return;
         }
 
@@ -839,10 +1435,9 @@
             burn_subtitles: document.getElementById("burn-subtitles").checked
         };
 
-        // Disable button
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = true;
-        btnSubmit.textContent = "Đang bắt đầu...";
+        btnSubmit.textContent = "Đang khởi chạy...";
 
         try {
             const resp = await fetch("/api/run", {
@@ -868,126 +1463,101 @@
 
             const data = await resp.json();
             activeTaskId = data.task_id;
-            
-            // Show Status Card, Hide Output Card
+
+            document.getElementById("control-card").style.display = "none";
             document.getElementById("status-card").style.display = "flex";
             document.getElementById("output-card").style.display = "none";
-            document.getElementById("terminal-log").innerHTML = '<div class="terminal-line info">Bắt đầu tiến trình lồng tiếng (Task ID: ' + activeTaskId + ')...</div>';
-            
-            // Reset Progress Track
-            resetProgressSteps();
+            document.getElementById("terminal-log").innerHTML = '<div class="terminal-line info">Bắt đầu tiến trình (Task: ' + activeTaskId.substring(0, 8) + '...)...</div>';
 
-            // Start Polling
+            resetProgressSteps();
             startPolling();
 
         } catch (err) {
-            alert("Lỗi: " + err.message);
+            showToast("Lỗi: " + err.message, "error");
             btnSubmit.disabled = false;
             btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
         }
     }
 
+    // ============================================
+    // SPEAKER CONFIGURATION
+    // ============================================
     let currentWorkDir = null;
 
     function renderSpeakerConfig(data) {
         const container = document.getElementById("speakers-list-container");
         container.innerHTML = "";
-        
+
         const speakers = data.speakers;
         const defaultMale = data.default_male;
         const defaultFemale = data.default_female;
-        
+
         if (speakers.length === 0) {
-            container.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-muted);">Không phát hiện nhân vật nào. Hãy click Tiếp tục.</div>`;
+            container.innerHTML = `<div style="padding: var(--spacing-12); font-family: var(--font-body); font-size: 14px; opacity: 0.85; color: var(--color-bone-glow);">Không phát hiện nhân vật. Click tiếp tục.</div>`;
             return;
         }
-        
+
         speakers.forEach(sp => {
             const row = document.createElement("div");
-            row.style.display = "flex";
-            row.style.flexDirection = "column";
-            row.style.gap = "8px";
-            row.style.padding = "16px";
-            row.style.background = "rgba(255, 255, 255, 0.02)";
-            row.style.border = "1px solid rgba(255, 255, 255, 0.05)";
-            row.style.borderRadius = "12px";
             row.className = "speaker-row";
             row.setAttribute("data-speaker", sp.speaker);
-            
-            // Header row: Role name & gender tag
+
             const header = document.createElement("div");
-            header.style.display = "flex";
-            header.style.justifyContent = "space-between";
-            header.style.alignItems = "center";
-            
+            header.className = "speaker-header";
+
             const nameSpan = document.createElement("span");
+            nameSpan.className = "speaker-name";
             nameSpan.textContent = sp.speaker;
-            nameSpan.style.fontWeight = "600";
-            nameSpan.style.color = "#c084fc";
-            
+
             const genderBadge = document.createElement("span");
-            genderBadge.textContent = sp.gender === "male" ? "Nam (Male)" : (sp.gender === "female" ? "Nữ (Female)" : "Trung tính (Neutral)");
-            genderBadge.style.fontSize = "0.8rem";
-            genderBadge.style.padding = "3px 8px";
-            genderBadge.style.borderRadius = "6px";
-            genderBadge.style.background = sp.gender === "male" ? "rgba(59, 130, 246, 0.15)" : (sp.gender === "female" ? "rgba(236, 72, 153, 0.15)" : "rgba(156, 163, 175, 0.15)");
-            genderBadge.style.color = sp.gender === "male" ? "#60a5fa" : (sp.gender === "female" ? "#f472b6" : "#9ca3af");
-            genderBadge.style.border = sp.gender === "male" ? "1px solid rgba(59, 130, 246, 0.3)" : (sp.gender === "female" ? "1px solid rgba(236, 72, 153, 0.3)" : "1px solid rgba(156, 163, 175, 0.3)");
-            
+            genderBadge.className = "gender-badge";
+            genderBadge.textContent = sp.gender === "male" ? "NAM" : (sp.gender === "female" ? "NỮ" : "NEUTRAL");
+
             header.appendChild(nameSpan);
             header.appendChild(genderBadge);
-            
-            // Control row: Select dropdown & custom voice input
+
             const selectContainer = document.createElement("div");
             selectContainer.style.display = "flex";
             selectContainer.style.flexDirection = "column";
-            selectContainer.style.gap = "8px";
-            
+            selectContainer.style.gap = "var(--spacing-4)";
+
             const select = document.createElement("select");
             select.className = "select-custom character-voice-select";
-            select.style.padding = "10px 14px";
-            select.style.fontSize = "0.95rem";
-            
+
             const isMale = sp.gender === "male";
-            
+
             const optMale = document.createElement("option");
             optMale.value = defaultMale;
-            optMale.textContent = `Giọng Nam mặc định (ID: ${defaultMale ? defaultMale.substring(0, 6) + '...' : 'Chưa cấu hình'})`;
+            optMale.textContent = `Giọng Nam (${defaultMale ? defaultMale.substring(0, 6) + '...' : 'N/A'})`;
             if (isMale) optMale.selected = true;
-            
+
             const optFemale = document.createElement("option");
             optFemale.value = defaultFemale;
-            optFemale.textContent = `Giọng Nữ mặc định (ID: ${defaultFemale ? defaultFemale.substring(0, 6) + '...' : 'Chưa cấu hình'})`;
+            optFemale.textContent = `Giọng Nữ (${defaultFemale ? defaultFemale.substring(0, 6) + '...' : 'N/A'})`;
             if (!isMale && sp.gender === "female") optFemale.selected = true;
-            
+
             const optCustom = document.createElement("option");
             optCustom.value = "custom";
-            optCustom.textContent = "Nhập LucyLab Voice ID tự chọn...";
+            optCustom.textContent = "Nhập Voice ID tùy chọn...";
             if (!isMale && sp.gender !== "female") optCustom.selected = true;
-            
+
             select.appendChild(optFemale);
             select.appendChild(optMale);
             select.appendChild(optCustom);
-            
+
             const customInput = document.createElement("input");
             customInput.type = "text";
             customInput.className = "input-text custom-voice-input";
-            customInput.style.padding = "10px 14px";
-            customInput.style.fontSize = "0.9rem";
-            customInput.placeholder = "Nhập LucyLab Voice ID ở đây";
+            customInput.placeholder = "LucyLab Voice ID";
             customInput.style.display = select.value === "custom" ? "block" : "none";
-            
+
             select.addEventListener("change", (e) => {
-                if (e.target.value === "custom") {
-                    customInput.style.display = "block";
-                } else {
-                    customInput.style.display = "none";
-                }
+                customInput.style.display = e.target.value === "custom" ? "block" : "none";
             });
-            
+
             selectContainer.appendChild(select);
             selectContainer.appendChild(customInput);
-            
+
             row.appendChild(header);
             row.appendChild(selectContainer);
             container.appendChild(row);
@@ -996,62 +1566,59 @@
 
     async function handlePipelinePendingSpeaker(result) {
         currentWorkDir = result.work_dir;
-        
+
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
         btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
-        
+
         document.getElementById("speaker-config-card").style.display = "flex";
         document.getElementById("output-card").style.display = "none";
-        
+
         try {
             const resp = await fetch("/api/speakers?work_dir=" + encodeURIComponent(result.work_dir));
-            if (!resp.ok) {
-                throw new Error("Không thể tải danh sách nhân vật");
-            }
+            if (!resp.ok) throw new Error("Không thể tải danh sách nhân vật");
             const data = await resp.json();
             renderSpeakerConfig(data);
-            
             document.getElementById("speaker-config-card").scrollIntoView({ behavior: "smooth" });
         } catch (err) {
-            alert("Lỗi tải nhân vật: " + err.message);
+            showToast("Lỗi tải nhân vật: " + err.message, "error");
         }
     }
 
     async function resumePipelineWithSpeakers() {
         if (!currentWorkDir) {
-            alert("Lỗi: Không tìm thấy thư mục làm việc hiện tại.");
+            showToast("Không tìm thấy thư mục làm việc.", "error");
             return;
         }
-        
+
         const speakerMap = {};
         const rows = document.querySelectorAll(".speaker-row");
         let hasError = false;
-        
+
         rows.forEach(row => {
             const speaker = row.getAttribute("data-speaker");
             const select = row.querySelector(".character-voice-select");
             const customInput = row.querySelector(".custom-voice-input");
-            
+
             let voiceId = select.value;
             if (voiceId === "custom") {
                 voiceId = customInput.value.trim();
                 if (!voiceId) {
-                    alert(`Vui lòng nhập Voice ID cho nhân vật ${speaker}`);
+                    showToast(`Nhập Voice ID cho ${speaker}`, "error");
                     hasError = true;
                     customInput.focus();
                 }
             }
             speakerMap[speaker] = voiceId;
         });
-        
+
         if (hasError) return;
-        
+
         const btnResume = document.getElementById("btn-resume-speakers");
         const originalText = btnResume.textContent;
         btnResume.disabled = true;
-        btnResume.textContent = "Đang gửi cấu hình...";
-        
+        btnResume.textContent = "Đang gửi...";
+
         const payload = {
             resume_dir: currentWorkDir,
             speaker_map: speakerMap,
@@ -1063,40 +1630,42 @@
             publish_facebook: document.getElementById("pub-facebook").checked,
             burn_subtitles: document.getElementById("burn-subtitles").checked
         };
-        
+
         try {
             const resp = await fetch("/api/run", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
-            
+
             if (!resp.ok) {
                 const errorData = await resp.json();
                 throw new Error(errorData.detail || "Không thể resume pipeline");
             }
-            
+
             const data = await resp.json();
             activeTaskId = data.task_id;
-            
+
             document.getElementById("speaker-config-card").style.display = "none";
             document.getElementById("status-card").style.display = "flex";
-            
+
             const consoleEl = document.getElementById("terminal-log");
-            consoleEl.innerHTML += `<div class="terminal-line info">Đã gửi cấu hình giọng nhân vật. Tiếp tục chạy lồng tiếng (Task ID: ${activeTaskId})...</div>`;
-            
+            consoleEl.innerHTML += `<div class="terminal-line info">Đã gửi cấu hình giọng. Resume (Task: ${activeTaskId.substring(0, 8)}...)...</div>`;
+
             resetProgressSteps();
             startPolling();
-            
+
         } catch (err) {
-            alert("Lỗi: " + err.message);
+            showToast("Lỗi: " + err.message, "error");
         } finally {
             btnResume.disabled = false;
             btnResume.textContent = originalText;
         }
     }
 
-    // Reset UI progress tracker
+    // ============================================
+    // PROGRESS TRACKING
+    // ============================================
     function resetProgressSteps() {
         document.getElementById("progress-bar").style.width = "0%";
         for (let i = 1; i <= 8; i++) {
@@ -1106,13 +1675,11 @@
         document.getElementById("step-1").classList.add("active");
     }
 
-    // Start polling status endpoint
     function startPolling() {
         if (pollIntervalId) clearInterval(pollIntervalId);
         pollIntervalId = setInterval(checkStatus, 1500);
     }
 
-    // Check status and update UI
     async function checkStatus() {
         if (!activeTaskId) return;
 
@@ -1121,14 +1688,9 @@
             if (!resp.ok) return;
 
             const data = await resp.json();
-            
-            // Update terminal logs
             updateTerminalLogs(data.logs);
-
-            // Update Progress Steps based on logs / pipeline step info
             updateProgressTracker(data.progress_step, data.status);
 
-            // Check final status
             if (data.status === "success") {
                 clearInterval(pollIntervalId);
                 handlePipelineSuccess(data.result);
@@ -1144,11 +1706,10 @@
             }
 
         } catch (err) {
-            console.error("Lỗi khi kiểm tra trạng thái: ", err);
+            console.error("Lỗi kiểm tra trạng thái:", err);
         }
     }
 
-    // Print logs inside the console simulator
     function updateTerminalLogs(logs) {
         const consoleEl = document.getElementById("terminal-log");
         let html = "";
@@ -1157,11 +1718,10 @@
             if (line.includes("WARNING")) className = "warning";
             else if (line.includes("ERROR")) className = "error";
             else if (line.includes("STEP")) className = "step-log";
-            
             html += `<div class="terminal-line ${className}">${escapeHtml(line)}</div>`;
         });
         consoleEl.innerHTML = html;
-        consoleEl.scrollTop = consoleEl.scrollHeight; // Auto Scroll
+        consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
     function escapeHtml(text) {
@@ -1173,86 +1733,79 @@
             .replace(/'/g, "&#039;");
     }
 
-    // Map current pipeline steps to the 8 UI progress points
     function updateProgressTracker(stepName, status) {
-        const stepMap = {
-            "STEP 1": 1, // Acquiring video
-            "STEP 2": 2, // Extracting audio
-            "STEP 2.5": 2, // Vocal separation
-            "STEP 3": 3, // Transcribing (ASR)
-            "STEP 4.5": 5, // Speaker detection
-            "STEP 4": 4, // Translating
-            "STEP 5": 6, // Synthesizing (TTS)
-            "STEP 6": 7, // Merging audio
-            "STEP 7": 8  // Merging video / publishing
-        };
-
         let activeStepNum = 1;
-        for (const [key, value] of Object.entries(stepMap)) {
-            if (stepName && stepName.includes(key)) {
-                activeStepNum = value;
-                break;
+
+        if (stepName) {
+            if (stepName === "Completed") {
+                activeStepNum = 8;
+            } else {
+                // Match patterns like "STEP 5", "STEP5", "Step 2.5", "STEP 4.5" case-insensitively
+                const match = stepName.match(/STEP\s*(\d+(\.\d+)?)/i);
+                if (match) {
+                    const stepVal = parseFloat(match[1]);
+                    if (stepVal === 1) activeStepNum = 1;
+                    else if (stepVal === 2 || stepVal === 2.5) activeStepNum = 2;
+                    else if (stepVal === 3) activeStepNum = 3;
+                    else if (stepVal === 4) activeStepNum = 4;
+                    else if (stepVal === 4.5) activeStepNum = 5;
+                    else if (stepVal === 5) activeStepNum = 6;
+                    else if (stepVal === 6) activeStepNum = 7;
+                    else if (stepVal === 7) activeStepNum = 8;
+                }
             }
         }
 
-        if (stepName === "Completed") activeStepNum = 8;
-
-        // Fill bar
         const fillPercent = ((activeStepNum - 1) / 7) * 100;
         document.getElementById("progress-bar").style.width = fillPercent + "%";
 
-        // Style steps
         for (let i = 1; i <= 8; i++) {
             const el = document.getElementById("step-" + i);
             el.classList.remove("active", "completed");
-            
+
             if (i < activeStepNum) {
                 el.classList.add("completed");
             } else if (i === activeStepNum) {
                 if (status === "success" && i === 8) {
                     el.classList.add("completed");
-                } else if (status === "failed") {
-                    el.classList.add("active"); // shows failed step
                 } else {
                     el.classList.add("active");
                 }
             }
         }
 
-        // Badge label
         const badge = document.getElementById("status-badge");
         if (status === "running") {
-            badge.style.color = "var(--secondary)";
-            badge.innerHTML = `<span class="indicator-pulse"></span>Đang chạy: ${stepName}`;
+            badge.style.color = "var(--color-bone-glow)";
+            badge.innerHTML = `<span class="indicator-pulse"></span>${stepName}`;
         } else if (status === "success") {
-            badge.style.color = "var(--success)";
+            badge.style.color = "var(--color-success)";
             badge.innerHTML = `✓ Hoàn tất`;
         } else if (status === "failed") {
-            badge.style.color = "var(--error)";
-            badge.innerHTML = `✗ Lỗi tiến trình`;
+            badge.style.color = "var(--color-error)";
+            badge.innerHTML = `✗ Lỗi`;
         } else if (status === "translate_pending") {
-            badge.style.color = "#fbbf24";
+            badge.style.color = "var(--color-warning)";
             badge.innerHTML = `⚠ Đợi dịch`;
         } else if (status === "speaker_pending") {
-            badge.style.color = "#fbbf24";
-            badge.innerHTML = `⚠ Đợi chọn giọng`;
+            badge.style.color = "var(--color-warning)";
+            badge.innerHTML = `⚠ Đợi giọng`;
         }
     }
 
+    // ============================================
+    // PIPELINE RESULT HANDLERS
+    // ============================================
     function handlePipelineSuccess(result) {
-        // Enable action button
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
         btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
 
-        // Show Output Card
         const outputCard = document.getElementById("output-card");
         outputCard.style.display = "flex";
 
-        // Load Dubbed Video
         const videoEl = document.getElementById("result-video");
         if (result.files && result.files.dubbed_video) {
-            // Convert file path to server URL path
             const relPath = result.files.dubbed_video.replace(/\\/g, '/').split('/output/')[1];
             videoEl.src = "/output/" + relPath;
             videoEl.style.display = "block";
@@ -1260,13 +1813,11 @@
             videoEl.style.display = "none";
         }
 
-        // Display Metadata
         const metadata = result.youtube_metadata_content || result.metadata || {};
         document.getElementById("meta-title").textContent = metadata.title || "Không thể tạo tiêu đề";
         document.getElementById("meta-desc").textContent = metadata.description || "Không thể tạo mô tả";
         document.getElementById("meta-tags").textContent = (metadata.hashtags || []).join(" ") || "Không có tags";
 
-        // Display publishing URLs
         const resultsEl = document.getElementById("publishing-results");
         const ytContainer = document.getElementById("yt-link-container");
         const fbContainer = document.getElementById("fb-link-container");
@@ -1287,22 +1838,22 @@
                 fbContainer.style.display = "flex";
                 hasUrls = true;
             }
-            if (hasUrls) {
-                resultsEl.style.display = "block";
-            }
+            if (hasUrls) resultsEl.style.display = "block";
         }
 
-        // Fetch custom metadata details if saved to JSON file
         if (result.files && result.files.youtube_metadata) {
             fetchMetadataContent(result.files.youtube_metadata);
         }
+
+        // Restore control card and reset wizard to step 1
+        document.getElementById("control-card").style.display = "flex";
+        goToStep(1);
 
         outputCard.scrollIntoView({ behavior: "smooth" });
     }
 
     async function fetchMetadataContent(metadataFilePath) {
         try {
-            // convert abs path to output url
             const relPath = metadataFilePath.replace(/\\/g, '/').split('/output/')[1];
             const resp = await fetch("/output/" + relPath);
             if (resp.ok) {
@@ -1312,7 +1863,7 @@
                 document.getElementById("meta-tags").textContent = (metadata.hashtags || []).join(" ") || "Tags";
             }
         } catch (e) {
-            console.error("Lỗi khi tải metadata chi tiết: ", e);
+            console.error("Lỗi tải metadata:", e);
         }
     }
 
@@ -1320,24 +1871,65 @@
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
         btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
-        alert("Tiến trình bị gián đoạn do lỗi: " + errMessage);
+        
+        // Show control wizard again on error
+        document.getElementById("control-card").style.display = "flex";
+        showToast("Lỗi: " + errMessage, "error");
     }
 
     function handlePipelinePendingTranslation(result) {
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
-        btnSubmit.textContent = "Tiếp tục lồng tiếng (Resume)";
-        alert("Đang đợi dịch transcript! Vui lòng kiểm tra TRANSLATE_PENDING.txt trong thư mục làm việc: " + result.work_dir);
+        btnSubmit.textContent = "Tiếp tục (Resume)";
+
+        // Show control wizard again
+        document.getElementById("control-card").style.display = "flex";
+        showToast("Đợi dịch transcript. Kiểm tra TRANSLATE_PENDING.txt: " + result.work_dir, "error");
     }
 
     function copyText(elementId) {
         const text = document.getElementById(elementId).textContent;
         navigator.clipboard.writeText(text).then(() => {
-            alert("Đã sao chép nội dung vào Clipboard!");
+            showToast("Đã copy vào clipboard");
         }).catch(err => {
-            console.error("Lỗi copy: ", err);
+            console.error("Copy error:", err);
         });
     }
+
+    // ============================================
+    // THEME SWITCHER (Light / Dark)
+    // ============================================
+    function toggleTheme() {
+        const body = document.body;
+        const btnText = document.getElementById("theme-text");
+        const btnIcon = document.getElementById("theme-icon");
+        
+        if (body.classList.contains("light-theme")) {
+            body.classList.remove("light-theme");
+            localStorage.setItem("theme", "dark");
+            if (btnText) btnText.textContent = "Giao diện Sáng";
+            if (btnIcon) btnIcon.textContent = "☀";
+        } else {
+            body.classList.add("light-theme");
+            localStorage.setItem("theme", "light");
+            if (btnText) btnText.textContent = "Giao diện Tối";
+            if (btnIcon) btnIcon.textContent = "🌙";
+        }
+    }
+
+    // Apply saved theme on page load
+    (function initTheme() {
+        const savedTheme = localStorage.getItem("theme");
+        if (savedTheme === "light") {
+            document.body.classList.add("light-theme");
+            window.addEventListener("DOMContentLoaded", () => {
+                const btnText = document.getElementById("theme-text");
+                const btnIcon = document.getElementById("theme-icon");
+                if (btnText) btnText.textContent = "Giao diện Tối";
+                if (btnIcon) btnIcon.textContent = "🌙";
+            });
+        }
+    })();
 </script>
 
 </body>
