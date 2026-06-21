@@ -60,38 +60,6 @@ SEGMENTS_TO_REWRITE:
 {json.dumps(prompt_items, ensure_ascii=False, indent=2)}
 """
     return prompt
-
-
-def rewrite_gemini(prompt: str) -> list[dict] | None:
-    from src.utils import call_gemini_api
-    res_text = call_gemini_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            data = json.loads(cleaned)
-            return data.get("rewritten_segments")
-        except Exception as e:
-            logger.error(f"Failed to parse Gemini rewrite json: {e}")
-    return None
-
-
-def rewrite_groq(prompt: str) -> list[dict] | None:
-    from src.utils import call_groq_api
-    res_text = call_groq_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            data = json.loads(cleaned)
-            return data.get("rewritten_segments")
-        except Exception as e:
-            logger.error(f"Failed to parse Groq rewrite json: {e}")
-    return None
-
-
 def rewrite_timeline(
     segments: list[dict],
     video_context: dict,
@@ -122,10 +90,13 @@ def rewrite_timeline(
     logger.info(f"Found {len(to_rewrite)} segments requiring timeline rewrite.")
     prompt = build_rewrite_prompt(video_context, character_bible, to_rewrite)
 
-    rewritten_results = rewrite_gemini(prompt)
-    if not rewritten_results:
-        logger.info("Gemini timeline rewrite failed, trying Groq Llama fallback...")
-        rewritten_results = rewrite_groq(prompt)
+    from src.ai import ai_router
+    try:
+        res_dict = ai_router.rewrite_timeline(prompt)
+        rewritten_results = res_dict.get("rewritten_segments") if isinstance(res_dict, dict) else None
+    except Exception as e:
+        logger.error(f"Router timeline rewrite failed: {e}")
+        rewritten_results = None
 
     if not rewritten_results:
         logger.warning("Timeline rewrite AI failed. Proceeding with original translations.")
@@ -155,14 +126,16 @@ def rewrite_timeline(
                 "original_dub_vi": original_dub,
                 "dub_vi": final_dub,
                 "final_dub_vi": final_dub,
-                "text_vi": final_dub  # Alias for backward compatibility
+                "text_vi": final_dub,  # Alias for backward compatibility
+                "subtitle_vi": final_dub
             })
         else:
             updated_segments.append({
                 **s,
                 "timing_rewrite_applied": False,
                 "original_dub_vi": original_dub,
-                "final_dub_vi": original_dub
+                "final_dub_vi": s.get("final_dub_vi", original_dub),
+                "subtitle_vi": s.get("subtitle_vi", original_dub)
             })
 
     return updated_segments

@@ -81,77 +81,90 @@ NEXT_SEGMENTS (Chỉ dùng làm ngữ cảnh sau, KHÔNG dịch):
 {next_json}
 """
     return prompt
-
-
-def translate_window_gemini(prompt: str) -> list[dict] | None:
-    from src.utils import call_gemini_api
-    res_text = call_gemini_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            data = json.loads(cleaned)
-            return data.get("segments")
-        except Exception as e:
-            logger.error(f"Failed to parse Gemini window json: {e}")
-    return None
-
-
-def translate_window_groq(prompt: str) -> list[dict] | None:
-    from src.utils import call_groq_api
-    res_text = call_groq_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            data = json.loads(cleaned)
-            return data.get("segments")
-        except Exception as e:
-            logger.error(f"Failed to parse Groq window json: {e}")
-    return None
-
-
 def translate_segments_contextual(
     segments: list[dict],
     video_context: dict,
     glossary: dict,
     character_bible: dict,
-    source_lang: str
+    source_lang: str,
+    work_dir: str | None = None
 ) -> list[dict]:
     """Translate ASR transcript segments using a sliding window contextual approach."""
     if not segments:
         return []
 
-    logger.info(f"Starting contextual translation of {len(segments)} segments...")
+    window_size = config.TRANSLATION_WINDOW_SIZE
+    context_before = config.TRANSLATION_CONTEXT_BEFORE
+    context_after = config.TRANSLATION_CONTEXT_AFTER
+
+    logger.info(f"Starting contextual translation of {len(segments)} segments (window_size={window_size})...")
     translated_segments = []
 
-    for i in range(0, len(segments), WINDOW_SIZE):
-        target_segs = segments[i:i + WINDOW_SIZE]
+    windows_dir = None
+    if work_dir and config.TRANSLATION_PARTIAL_SAVE_ENABLED:
+        windows_dir = os.path.join(work_dir, "translation_windows")
+        os.makedirs(windows_dir, exist_ok=True)
+
+    for i in range(0, len(segments), window_size):
+        target_segs = segments[i:i + window_size]
         
         # Calculate context slices
-        prev_start = max(0, i - CONTEXT_SIZE)
+        prev_start = max(0, i - context_before)
         prev_segs = segments[prev_start:i]
         
-        next_end = min(len(segments), i + WINDOW_SIZE + CONTEXT_SIZE)
-        next_segs = segments[i + WINDOW_SIZE:next_end]
+        next_end = min(len(segments), i + window_size + context_after)
+        next_segs = segments[i + window_size:next_end]
 
         logger.info(f"Translating window: segments {target_segs[0]['id']} to {target_segs[-1]['id']}")
 
-        prompt = build_window_prompt(
-            video_context, glossary, character_bible,
-            prev_segs, target_segs, next_segs, source_lang
-        )
+        window_filename = f"window_{target_segs[0]['id']:04d}_{target_segs[-1]['id']:04d}.json"
+        window_path = os.path.join(windows_dir, window_filename) if windows_dir else None
+        pending_path = os.path.join(windows_dir, f"window_{target_segs[0]['id']:04d}_{target_segs[-1]['id']:04d}.pending.json") if windows_dir else None
 
         window_results = None
-        # Try Gemini
-        window_results = translate_window_gemini(prompt)
-        
-        # Fallback to Groq
+        loaded_from_cache = False
+
+        if window_path and os.path.exists(window_path):
+            try:
+                with open(window_path, "r", encoding="utf-8") as f:
+                    window_results = json.load(f)
+                logger.info(f"Resumed window {target_segs[0]['id']}-{target_segs[-1]['id']} from partial save.")
+                loaded_from_cache = True
+            except Exception as e:
+                logger.warning(f"Failed to load partial save {window_path}: {e}")
+
         if not window_results:
-            logger.info("Gemini failed/unavailable, falling back to Groq Llama for window...")
-            window_results = translate_window_groq(prompt)
+            prompt = build_window_prompt(
+                video_context, glossary, character_bible,
+                prev_segs, target_segs, next_segs, source_lang
+            )
+
+            from src.ai import ai_router
+            try:
+                res_dict = ai_router.translate(prompt)
+                window_results = res_dict.get("segments") if isinstance(res_dict, dict) else None
+            except Exception as e:
+                logger.error(f"Router translation failed: {e}")
+                window_results = None
+
+            if window_results and len(window_results) == len(target_segs):
+                # Save successful window result
+                if window_path:
+                    try:
+                        with open(window_path, "w", encoding="utf-8") as f:
+                            json.dump(window_results, f, ensure_ascii=False, indent=2)
+                        if pending_path and os.path.exists(pending_path):
+                            os.remove(pending_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to save partial save {window_path}: {e}")
+            else:
+                # Mark as pending/failed
+                if pending_path:
+                    try:
+                        with open(pending_path, "w", encoding="utf-8") as f:
+                            json.dump({"status": "failed", "time": time.time()}, f, indent=2)
+                    except Exception as e:
+                        pass
 
         # Parse and ensure structure
         if not window_results or len(window_results) != len(target_segs):
@@ -190,6 +203,8 @@ def translate_segments_contextual(
                 "literal_vi": res.get("literal_vi", orig["text"]),
                 "dub_vi": dub_vi,
                 "text_vi": dub_vi,  # Alias for backwards compatibility
+                "subtitle_vi": dub_vi,
+                "final_dub_vi": dub_vi,
                 "speaker": res.get("speaker", "NARRATOR"),
                 "speaker_gender": res.get("speaker_gender", "neutral"),
                 "context_note": res.get("context_note", ""),
@@ -197,8 +212,9 @@ def translate_segments_contextual(
                 "risk_flags": res.get("risk_flags", [])
             })
 
-        # Small throttle to respect API rate limits
-        time.sleep(2.0)
+        # Small throttle to respect API rate limits (only if not loaded from cache)
+        if not loaded_from_cache:
+            time.sleep(2.0)
 
     logger.info(f"Contextual translation complete. Translated {len(translated_segments)} segments.")
     return translated_segments

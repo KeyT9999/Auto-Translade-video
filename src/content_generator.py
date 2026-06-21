@@ -10,6 +10,7 @@ import os
 import re
 import time
 
+import config
 import requests
 from google import genai
 from google.genai import types
@@ -174,9 +175,14 @@ Translated script ({lang_name}):
 Respond in this exact JSON format (no markdown code blocks):
 {{"title": "...", "description": "...", "hashtags": ["#tag1", "#tag2", ...]}}"""
 
+    use_gemini = bool(api_key and getattr(config, "GEMINI_ENABLED", False))
+
     text = None
-    if not api_key:
-        logger.warning("google_api_key not configured. Trying Groq fallback...")
+    if not use_gemini:
+        if api_key and not getattr(config, "GEMINI_ENABLED", False):
+            logger.info("Primary metadata provider disabled by config. Using Groq fallback.")
+        else:
+            logger.warning("google_api_key not configured. Trying Groq fallback...")
         text = _generate_metadata_groq(prompt)
     else:
         try:
@@ -325,6 +331,10 @@ def generate_thumbnails(
     Takes plain text scripts (not segments JSON).
     Returns list of saved thumbnail file paths.
     """
+    if not getattr(config, "GEMINI_ENABLED", False):
+        logger.info("Image generation disabled by config. Skipping thumbnail generation.")
+        return []
+
     client = genai.Client(api_key=api_key)
     saved_paths = []
 
@@ -444,7 +454,7 @@ def generate_content(
     # Step 3: Build thumbnail prompts and save to file (image API skipped)
     # To re-enable Gemini image generation, uncomment the generate_thumbnails block
     # below and the fetch_original_thumbnail block above.
-    logger.info("Building thumbnail prompts (Gemini image API disabled)")
+    logger.info("Building thumbnail prompts (image API disabled)")
     thumbnail_prompts = _build_thumbnail_prompts(
         script_original=script_original,
         script_translated=script_translated,

@@ -1128,6 +1128,38 @@
                 </div>
             </div>
 
+            <!-- Subtitle Config Group (only visible in subtitle_only mode) -->
+            <div class="form-group" id="subtitle-config-group" style="display: none; margin-top: var(--spacing-4);">
+                <label class="form-label main-focus-label">Cấu hình phụ đề</label>
+                <div class="toggle-group" style="margin-bottom: var(--spacing-8);">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="cover-original-subtitles">
+                        <span class="checkmark"></span>
+                        Che phụ đề gốc
+                    </label>
+                </div>
+                <div class="options-grid">
+                    <div class="form-group">
+                        <label class="form-label" for="subtitle-style-select">Kiểu phụ đề</label>
+                        <select id="subtitle-style-select" class="select-custom">
+                            <option value="boxed" selected>Chữ có nền (Boxed)</option>
+                            <option value="plain">Chỉ chữ + viền (Plain)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="subtitle-font-size-select">Cỡ chữ</label>
+                        <select id="subtitle-font-size-select" class="select-custom">
+                            <option value="36">Nhỏ (36)</option>
+                            <option value="48" selected>Vừa (48)</option>
+                            <option value="56">Lớn (56)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" id="mask-opacity-group" style="display: none; margin-top: var(--spacing-8);">
+                    <label class="form-label" for="mask-opacity-range">Độ mờ nền che: <span id="mask-opacity-value">0.55</span></label>
+                    <input type="range" id="mask-opacity-range" min="0.3" max="0.9" step="0.05" value="0.55" style="width: 100%; accent-color: var(--color-active-border);">
+                </div>
+            </div>
             <!-- Advanced settings Accordion -->
             <div class="accordion-header" onclick="toggleAdvancedSettings()">
                 <span>Thiết lập nâng cao</span>
@@ -1447,6 +1479,7 @@
         const pauseForSpeakers = document.getElementById("pause-for-speakers");
         const pauseForSpeakersContainer = pauseForSpeakers ? pauseForSpeakers.closest(".checkbox-container") : null;
         const btnSubmit = document.getElementById("btn-submit");
+        const subtitleConfigGroup = document.getElementById("subtitle-config-group");
 
         if (mode === "subtitle_only") {
             if (voiceConfig) {
@@ -1466,6 +1499,9 @@
             if (btnSubmit) {
                 btnSubmit.textContent = "Bắt đầu xử lý phụ đề";
             }
+            if (subtitleConfigGroup) {
+                subtitleConfigGroup.style.display = "flex";
+            }
         } else {
             if (voiceConfig) {
                 voiceConfig.style.opacity = "1";
@@ -1481,7 +1517,30 @@
             if (btnSubmit) {
                 btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
             }
+            if (subtitleConfigGroup) {
+                subtitleConfigGroup.style.display = "none";
+            }
         }
+    }
+
+    // Cover checkbox → show/hide mask opacity slider
+    const coverCheckbox = document.getElementById("cover-original-subtitles");
+    if (coverCheckbox) {
+        coverCheckbox.addEventListener("change", () => {
+            const opacityGroup = document.getElementById("mask-opacity-group");
+            if (opacityGroup) {
+                opacityGroup.style.display = coverCheckbox.checked ? "flex" : "none";
+            }
+        });
+    }
+
+    // Opacity slider → update displayed value
+    const opacitySlider = document.getElementById("mask-opacity-range");
+    if (opacitySlider) {
+        opacitySlider.addEventListener("input", (e) => {
+            const valueEl = document.getElementById("mask-opacity-value");
+            if (valueEl) valueEl.textContent = parseFloat(e.target.value).toFixed(2);
+        });
     }
 
     function getSubmitButtonText() {
@@ -1518,7 +1577,11 @@
             publish_facebook: document.getElementById("pub-facebook").checked,
             pause_for_speakers: document.getElementById("pause-for-speakers").checked,
             burn_subtitles: document.getElementById("burn-subtitles").checked,
-            mode: activeMode
+            mode: activeMode,
+            cover_original_subtitles: document.getElementById("cover-original-subtitles").checked,
+            subtitle_style: document.getElementById("subtitle-style-select").value,
+            subtitle_font_size: parseInt(document.getElementById("subtitle-font-size-select").value),
+            mask_opacity: parseFloat(document.getElementById("mask-opacity-range").value)
         };
 
         const btnSubmit = document.getElementById("btn-submit");

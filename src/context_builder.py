@@ -1,9 +1,6 @@
 """Context Builder — Generates video_context.json from transcript_original.json using Gemini/Groq."""
 import json
 import os
-import re
-import requests
-import config
 from src.utils import setup_logging
 
 logger = setup_logging("context_builder")
@@ -67,36 +64,6 @@ Transcript lines:
 {transcript_text}
 """
     return prompt
-
-
-def generate_context_gemini(prompt: str) -> dict | None:
-    from src.utils import call_gemini_api
-    res_text = call_gemini_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            return json.loads(cleaned)
-        except Exception as e:
-            logger.error(f"Failed to parse Gemini context json: {e}")
-    return None
-
-
-def generate_context_groq(prompt: str) -> dict | None:
-    from src.utils import call_groq_api
-    res_text = call_groq_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            return json.loads(cleaned)
-        except Exception as e:
-            logger.error(f"Failed to parse Groq context json: {e}")
-    return None
-
-
 def build_video_context(segments: list[dict], output_path: str) -> dict:
     """Build and save video_context.json from transcript segments."""
     if os.path.exists(output_path):
@@ -111,10 +78,12 @@ def build_video_context(segments: list[dict], output_path: str) -> dict:
     logger.info("Generating new video context...")
     prompt = build_context_prompt(segments)
 
-    # Try Gemini first, fallback to Groq
-    context = generate_context_gemini(prompt)
-    if not context:
-        context = generate_context_groq(prompt)
+    from src.ai import ai_router
+    try:
+        context = ai_router.generate_context(prompt)
+    except Exception as e:
+        logger.error(f"Router failed to generate context: {e}")
+        context = None
 
     if not context:
         logger.warning("Failed to generate context via LLMs, using default context fallback.")

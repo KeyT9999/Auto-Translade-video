@@ -32,6 +32,8 @@ def call_gemini_api(prompt: str, temperature: float = 0.2, response_mime_type: s
     import logging
     logger = logging.getLogger("api_helpers")
     
+    if not getattr(config, "GEMINI_ENABLED", False):
+        return None
     if getattr(config, "GEMINI_FAILED", False) or not config.GOOGLE_API_KEY:
         return None
     try:

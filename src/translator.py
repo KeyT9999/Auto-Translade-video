@@ -84,30 +84,6 @@ def parse_translation_response(response_text: str) -> dict:
     cleaned = re.sub(r"^```json\s*", "", cleaned)
     cleaned = re.sub(r"\s*```$", "", cleaned)
     return json.loads(cleaned)
-
-
-def translate_gemini(prompt: str) -> dict | None:
-    from src.utils import call_gemini_api
-    res_text = call_gemini_api(prompt, temperature=0.3)
-    if res_text:
-        try:
-            return parse_translation_response(res_text)
-        except Exception as e:
-            logger.error(f"Failed to parse Gemini translation json: {e}")
-    return None
-
-
-def translate_groq(prompt: str) -> dict | None:
-    from src.utils import call_groq_api
-    res_text = call_groq_api(prompt, temperature=0.2)
-    if res_text:
-        try:
-            return parse_translation_response(res_text)
-        except Exception as e:
-            logger.error(f"Failed to parse Groq translation json: {e}")
-    return None
-
-
 def post_check_translation(segments: list[dict]) -> None:
     """Check translated segments for common quality issues and log warnings.
     Non-blocking, for logging purposes only.
@@ -192,19 +168,23 @@ def translate_segments(segments: list[dict], source_lang: str) -> list[dict]:
     prompt = build_translation_prompt(segments, source_lang)
     result = None
 
-    # 1. Try Gemini first
-    result = translate_gemini(prompt)
-
-    # 2. Fall back to Groq Llama 3.3 70B
-    if not result:
-        logger.info("Gemini translation failed/unavailable. Falling back to Groq...")
-        result = translate_groq(prompt)
+    from src.ai import ai_router
+    try:
+        result = ai_router.translate(prompt)
+    except Exception as e:
+        logger.error(f"Router translation failed: {e}")
+        result = None
 
     if not result or "segments" not in result:
-        raise RuntimeError("Failed to obtain translation from both Gemini and Groq APIs.")
+        raise RuntimeError("Failed to obtain translation from AIRouter.")
 
-    # Match translations back to segments by ID
-    translation_map = {item["id"]: item["text_vi"] for item in result["segments"]}
+    # Match translations back to segments by ID with robust field fallback
+    translation_map = {}
+    for item in result["segments"]:
+        item_id = item.get("id")
+        if item_id is not None:
+            text_val = item.get("text_vi") or item.get("dub_vi") or item.get("subtitle_vi") or item.get("literal_vi") or ""
+            translation_map[item_id] = text_val
 
     updated_segments = []
     for s in segments:

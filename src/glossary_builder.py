@@ -1,9 +1,6 @@
 """Glossary Builder — Generates glossary.json from transcript and video context using Gemini/Groq."""
 import json
 import os
-import re
-import requests
-import config
 from src.utils import setup_logging
 
 logger = setup_logging("glossary_builder")
@@ -60,36 +57,6 @@ Transcript lines:
 {transcript_text}
 """
     return prompt
-
-
-def generate_glossary_gemini(prompt: str) -> dict | None:
-    from src.utils import call_gemini_api
-    res_text = call_gemini_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            return json.loads(cleaned)
-        except Exception as e:
-            logger.error(f"Failed to parse Gemini glossary json: {e}")
-    return None
-
-
-def generate_glossary_groq(prompt: str) -> dict | None:
-    from src.utils import call_groq_api
-    res_text = call_groq_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            return json.loads(cleaned)
-        except Exception as e:
-            logger.error(f"Failed to parse Groq glossary json: {e}")
-    return None
-
-
 def build_glossary(segments: list[dict], video_context: dict, output_path: str) -> dict:
     """Build and save glossary.json."""
     if os.path.exists(output_path):
@@ -104,10 +71,12 @@ def build_glossary(segments: list[dict], video_context: dict, output_path: str) 
     logger.info("Generating new glossary...")
     prompt = build_glossary_prompt(segments, video_context)
 
-    # Try Gemini first, fallback to Groq
-    glossary = generate_glossary_gemini(prompt)
-    if not glossary:
-        glossary = generate_glossary_groq(prompt)
+    from src.ai import ai_router
+    try:
+        glossary = ai_router.generate_glossary(prompt)
+    except Exception as e:
+        logger.error(f"Router failed to generate glossary: {e}")
+        glossary = None
 
     if not glossary:
         logger.warning("Failed to generate glossary via LLMs, using default glossary fallback.")

@@ -57,6 +57,10 @@ class PipelineRequest(BaseModel):
     speaker_map: Optional[Dict[str, str]] = None
     burn_subtitles: bool = False
     mode: Optional[str] = "dub_audio"
+    cover_original_subtitles: bool = False
+    subtitle_style: str = "plain"
+    subtitle_font_size: Optional[int] = None
+    mask_opacity: Optional[float] = None
 
 
 def execute_pipeline(task_id: str, req: PipelineRequest):
@@ -105,6 +109,10 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
             speaker_map=req.speaker_map,
             burn_subtitles=req.burn_subtitles,
             mode=req.mode or "dub_audio",
+            cover_original_subtitles=req.cover_original_subtitles,
+            subtitle_style=req.subtitle_style,
+            subtitle_font_size=req.subtitle_font_size,
+            mask_opacity=req.mask_opacity,
         )
 
         with tasks_lock:

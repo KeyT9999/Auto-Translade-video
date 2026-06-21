@@ -75,7 +75,7 @@ def test_validator_awkward_phrasing(sample_segments):
     issues = report["issues"]
     
     # Segment 4 has awkward phrase "Đâu cũng có thể ngồi"
-    awkward = [iss for iss in issues if iss["type"] == "AWKWARD_PHRASING"]
+    awkward = [iss for iss in issues if iss["type"] == "AWKWARD_TRANSLATION"]
     assert len(awkward) >= 1
     assert any(iss["id"] == 4 for iss in awkward)
 
@@ -105,7 +105,15 @@ def test_timeline_rewriter_no_change():
     assert rewritten[0]["timing_rewrite_applied"] is False
 
 
-def test_build_profiles_fallbacks(tmp_path):
+def test_build_profiles_fallbacks(tmp_path, monkeypatch):
+    # Mock AIRouter to fail so that fallback files are created
+    from src.ai import ai_router
+    def mock_fail(*a, **k):
+        raise ValueError("mock failure")
+    monkeypatch.setattr(ai_router, "generate_context", mock_fail)
+    monkeypatch.setattr(ai_router, "generate_glossary", mock_fail)
+    monkeypatch.setattr(ai_router, "generate_character_bible", mock_fail)
+
     # Test fallback files creation when empty segments list is provided
     context_path = str(tmp_path / "video_context.json")
     glossary_path = str(tmp_path / "glossary.json")

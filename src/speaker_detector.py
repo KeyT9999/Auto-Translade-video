@@ -1,7 +1,7 @@
 """Speaker detection module — Step 4.5 in the Vietnamese dubbing pipeline.
 
-Analyzes the translated transcript and assigns a speaker label + gender to
-each segment using a single LLM call (Gemini first, Groq fallback).
+Analyzes the translated transcript and assigns a speaker label + gender
+through the shared AI router.
 
 Output per segment:
   - speaker: role-based label, e.g. "NV_CHINH", "NV_PHU", "ME", "NARRATOR"
@@ -11,7 +11,6 @@ These fields are then used by Step 5 (TTS) to pick the correct voice ID.
 """
 import json
 import re
-import requests
 import config
 from src.utils import setup_logging
 
@@ -76,24 +75,6 @@ def _parse_llm_response(text: str) -> list[dict] | None:
         return None
 
 
-def _detect_via_gemini(prompt: str) -> list[dict] | None:
-    """Call Gemini 2.0 Flash to detect speakers."""
-    from src.utils import call_gemini_api
-    res_text = call_gemini_api(prompt, temperature=0.1)
-    if res_text:
-        return _parse_llm_response(res_text)
-    return None
-
-
-def _detect_via_groq(prompt: str) -> list[dict] | None:
-    """Call Groq Llama 3.3 70B to detect speakers."""
-    from src.utils import call_groq_api
-    res_text = call_groq_api(prompt, temperature=0.1)
-    if res_text:
-        return _parse_llm_response(res_text)
-    return None
-
-
 def detect_speakers(segments: list[dict]) -> list[dict]:
     """Detect speakers for each segment and add 'speaker' and 'speaker_gender' fields.
 
@@ -116,11 +97,13 @@ def detect_speakers(segments: list[dict]) -> list[dict]:
 
     prompt = _build_speaker_prompt(segments)
 
-    # Try Gemini first, then Groq
-    speaker_list = _detect_via_gemini(prompt)
-    if not speaker_list:
-        logger.info("Gemini unavailable. Trying Groq...")
-        speaker_list = _detect_via_groq(prompt)
+    from src.ai import ai_router
+    try:
+        res_dict = ai_router.detect_speakers(prompt)
+        speaker_list = res_dict.get("speakers") if isinstance(res_dict, dict) else None
+    except Exception as e:
+        logger.error(f"Router speaker detection failed: {e}")
+        speaker_list = None
 
     if not speaker_list:
         logger.warning(

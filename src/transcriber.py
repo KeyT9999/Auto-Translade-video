@@ -91,12 +91,16 @@ def transcribe_groq(audio_path: str, language: str) -> list[dict] | None:
 
 
 def transcribe(audio_path: str, language: str) -> list[dict]:
-    # Try Groq first
-    groq_segments = transcribe_groq(audio_path, language)
-    if groq_segments is not None:
-        return groq_segments
+    # Try ASR via router first
+    from src.ai import ai_router
+    try:
+        groq_segments = ai_router.asr(audio_path, language)
+        if groq_segments:
+            return groq_segments
+    except Exception as e:
+        logger.warning(f"Router ASR failed: {e}")
 
-    logger.warning("Groq ASR failed or was not configured. Falling back to Azure ASR...")
+    logger.warning("Router ASR failed or was not configured. Falling back to Azure ASR...")
     azure_lang = "en-US" if language == "auto" else language
     speech_config = speechsdk.SpeechConfig(
         subscription=config.AZURE_SPEECH_KEY,

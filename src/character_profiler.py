@@ -1,9 +1,6 @@
 """Character Profiler — Generates character_bible.json from transcript and video context using Gemini/Groq."""
 import json
 import os
-import re
-import requests
-import config
 from src.utils import setup_logging
 
 logger = setup_logging("character_profiler")
@@ -82,36 +79,6 @@ Transcript lines:
 {transcript_text}
 """
     return prompt
-
-
-def generate_bible_gemini(prompt: str) -> dict | None:
-    from src.utils import call_gemini_api
-    res_text = call_gemini_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            return json.loads(cleaned)
-        except Exception as e:
-            logger.error(f"Failed to parse Gemini character bible json: {e}")
-    return None
-
-
-def generate_bible_groq(prompt: str) -> dict | None:
-    from src.utils import call_groq_api
-    res_text = call_groq_api(prompt)
-    if res_text:
-        try:
-            cleaned = res_text.strip()
-            cleaned = re.sub(r"^```json\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-            return json.loads(cleaned)
-        except Exception as e:
-            logger.error(f"Failed to parse Groq character bible json: {e}")
-    return None
-
-
 def build_character_bible(segments: list[dict], video_context: dict, output_path: str) -> dict:
     """Build and save character_bible.json."""
     if os.path.exists(output_path):
@@ -126,10 +93,12 @@ def build_character_bible(segments: list[dict], video_context: dict, output_path
     logger.info("Generating new character bible...")
     prompt = build_profiler_prompt(segments, video_context)
 
-    # Try Gemini first, fallback to Groq
-    bible = generate_bible_gemini(prompt)
-    if not bible:
-        bible = generate_bible_groq(prompt)
+    from src.ai import ai_router
+    try:
+        bible = ai_router.generate_character_bible(prompt)
+    except Exception as e:
+        logger.error(f"Router failed to generate character bible: {e}")
+        bible = None
 
     if not bible:
         logger.warning("Failed to generate character bible via LLMs, using default fallback.")

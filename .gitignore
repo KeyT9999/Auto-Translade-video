@@ -91,6 +91,7 @@ input/
 .aider*
 .continue/
 .auto-translate/
+.cache/
 
 # ============================================================
 # Personal job lists (templates committed as *.example.json)
