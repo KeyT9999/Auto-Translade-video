@@ -1,4 +1,5 @@
 from src.utils import format_timestamp, setup_logging
+from src.subtitle_formatter import format_subtitle_text
 
 logger = setup_logging("srt_generator")
 
@@ -8,7 +9,7 @@ def generate_srt(segments: list[dict], output_path: str, text_field: str = "text
     for i, seg in enumerate(segments, start=1):
         start_ts = format_timestamp(seg["start"])
         end_ts = format_timestamp(seg["end"])
-        text = seg[text_field]
+        text = format_subtitle_text(seg[text_field])
         lines.append(f"{i}\n{start_ts} --> {end_ts}\n{text}\n")
 
     with open(output_path, "w", encoding="utf-8") as f:

@@ -78,59 +78,19 @@ def _parse_llm_response(text: str) -> list[dict] | None:
 
 def _detect_via_gemini(prompt: str) -> list[dict] | None:
     """Call Gemini 2.0 Flash to detect speakers."""
-    if not config.GOOGLE_API_KEY:
-        return None
-    try:
-        from google import genai
-        from google.genai import types
-
-        logger.info("Calling Gemini for speaker detection...")
-        client = genai.Client(api_key=config.GOOGLE_API_KEY)
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.1,
-                response_mime_type="application/json",
-            ),
-        )
-        if response.text:
-            return _parse_llm_response(response.text)
-    except Exception as e:
-        logger.error(f"Gemini speaker detection failed: {e}")
+    from src.utils import call_gemini_api
+    res_text = call_gemini_api(prompt, temperature=0.1)
+    if res_text:
+        return _parse_llm_response(res_text)
     return None
 
 
 def _detect_via_groq(prompt: str) -> list[dict] | None:
     """Call Groq Llama 3.3 70B to detect speakers."""
-    if not config.GROQ_API_KEY:
-        return None
-    try:
-        logger.info("Calling Groq Llama for speaker detection...")
-        headers = {
-            "Authorization": f"Bearer {config.GROQ_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": "llama-3.3-70b-versatile",
-            "messages": [
-                {"role": "system", "content": "You are a precise JSON assistant for video transcript analysis."},
-                {"role": "user", "content": prompt},
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.1,
-        }
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60,
-        )
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
-        return _parse_llm_response(content)
-    except Exception as e:
-        logger.error(f"Groq speaker detection failed: {e}")
+    from src.utils import call_groq_api
+    res_text = call_groq_api(prompt, temperature=0.1)
+    if res_text:
+        return _parse_llm_response(res_text)
     return None
 
 

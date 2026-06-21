@@ -82,4 +82,6 @@ VIVIBE_API_URL = os.getenv("VIVIBE_API_URL", LUCYLAB_API_URL)
 YOUTUBE_CLIENT_SECRETS = os.getenv("YOUTUBE_CLIENT_SECRETS", "client_secrets.json")
 YOUTUBE_TOKEN_PATH = os.getenv("YOUTUBE_TOKEN_PATH", "youtube_token.json")
 FACEBOOK_PAGE_ID = os.getenv("FACEBOOK_PAGE_ID", "")
-FACEBOOK_PAGE_TOKEN = os.getenv("FACEBOOK_PAGE_TOKEN", "")
+# Dynamic rate limit / API failure trackers
+GEMINI_FAILED = False
+GROQ_FAILED = False

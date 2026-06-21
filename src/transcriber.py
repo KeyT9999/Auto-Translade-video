@@ -41,7 +41,7 @@ def transcribe_groq(audio_path: str, language: str) -> list[dict] | None:
             "model": "whisper-large-v3",
             "response_format": "verbose_json"
         }
-        if lang_iso:
+        if lang_iso and lang_iso.lower() != "auto":
             data["language"] = lang_iso
 
         logger.info(f"Uploading to Groq ASR using whisper-large-v3 (language={lang_iso})...")
@@ -97,11 +97,12 @@ def transcribe(audio_path: str, language: str) -> list[dict]:
         return groq_segments
 
     logger.warning("Groq ASR failed or was not configured. Falling back to Azure ASR...")
+    azure_lang = "en-US" if language == "auto" else language
     speech_config = speechsdk.SpeechConfig(
         subscription=config.AZURE_SPEECH_KEY,
         region=config.AZURE_SPEECH_REGION,
     )
-    speech_config.speech_recognition_language = language
+    speech_config.speech_recognition_language = azure_lang
     speech_config.request_word_level_timestamps()
     speech_config.output_format = speechsdk.OutputFormat.Detailed
 

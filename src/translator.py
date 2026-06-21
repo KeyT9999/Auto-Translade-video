@@ -87,74 +87,25 @@ def parse_translation_response(response_text: str) -> dict:
 
 
 def translate_gemini(prompt: str) -> dict | None:
-    if not config.GOOGLE_API_KEY:
-        logger.warning("GOOGLE_API_KEY not set. Skipping Gemini translation.")
-        return None
-
-    try:
-        from google import genai
-        from google.genai import types
-
-        logger.info("Calling Gemini 2.0 Flash for translation...")
-        client = genai.Client(api_key=config.GOOGLE_API_KEY)
-        
-        # Use gemini-2.0-flash as primary
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                response_mime_type="application/json",
-            ),
-        )
-        if response.text:
-            return parse_translation_response(response.text)
-        return None
-    except Exception as e:
-        logger.error(f"Gemini translation failed: {e}")
-        return None
+    from src.utils import call_gemini_api
+    res_text = call_gemini_api(prompt, temperature=0.3)
+    if res_text:
+        try:
+            return parse_translation_response(res_text)
+        except Exception as e:
+            logger.error(f"Failed to parse Gemini translation json: {e}")
+    return None
 
 
 def translate_groq(prompt: str) -> dict | None:
-    if not config.GROQ_API_KEY:
-        logger.warning("GROQ_API_KEY not set. Skipping Groq translation.")
-        return None
-
-    try:
-        logger.info("Calling Groq Llama 3.3 70B for translation...")
-        headers = {
-            "Authorization": f"Bearer {config.GROQ_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": "llama-3.3-70b-versatile",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a precise JSON translation assistant."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.2
-        }
-
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"]
-        return parse_translation_response(content)
-    except Exception as e:
-        logger.error(f"Groq translation failed: {e}")
-        return None
+    from src.utils import call_groq_api
+    res_text = call_groq_api(prompt, temperature=0.2)
+    if res_text:
+        try:
+            return parse_translation_response(res_text)
+        except Exception as e:
+            logger.error(f"Failed to parse Groq translation json: {e}")
+    return None
 
 
 def post_check_translation(segments: list[dict]) -> None:

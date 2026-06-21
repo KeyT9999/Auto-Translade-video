@@ -1096,10 +1096,20 @@
 
         <!-- Step 2: Cấu hình lồng tiếng & Âm thanh -->
         <div class="panel-card" id="setup-panel-2" style="display: none;">
-            <div class="panel-subtitle">Cấu hình Dubbing & Âm thanh</div>
+            <div class="panel-subtitle">Cấu hình Dubbing & Phụ đề</div>
+            
+            <!-- Output Mode Selection -->
+            <div class="form-group" style="margin-bottom: var(--spacing-8);">
+                <label class="form-label main-focus-label">Chế độ đầu ra (Output Mode)</label>
+                <div class="option-card-group" id="mode-group">
+                    <button type="button" class="option-btn active" data-val="dub_audio">Lồng tiếng (Dub Audio)</button>
+                    <button type="button" class="option-btn" data-val="subtitle_only">Chỉ phụ đề (Subtitle Only)</button>
+                </div>
+            </div>
+
             <div class="options-grid">
                 <!-- Voice selection -->
-                <div class="form-group">
+                <div class="form-group" id="voice-config-group">
                     <label class="form-label">Giọng đọc ưu tiên</label>
                     <div class="option-card-group" id="voice-group">
                         <button type="button" class="option-btn active" data-val="female">Nữ</button>
@@ -1108,7 +1118,7 @@
                 </div>
 
                 <!-- BG Separator Mode -->
-                <div class="form-group">
+                <div class="form-group" id="bg-config-group">
                     <label class="form-label">Xử lý nhạc nền (BGM)</label>
                     <div class="option-card-group" id="bg-group">
                         <button type="button" class="option-btn active" data-val="demucs">Tách AI</button>
@@ -1128,6 +1138,7 @@
                     <div class="form-group">
                         <label class="form-label" for="src-lang">Ngôn ngữ gốc</label>
                         <select id="src-lang" class="select-custom">
+                            <option value="auto" selected>Tự động phát hiện (Auto-detect)</option>
                             <option value="en-US">English</option>
                             <option value="zh-CN">Chinese</option>
                             <option value="ja-JP">Japanese</option>
@@ -1380,12 +1391,30 @@
     // ============================================
     let activeVoice = "female";
     let activeBgMode = "demucs";
+    let activeMode = "dub_audio";
     let activeTaskId = null;
     let pollIntervalId = null;
 
     // Button groups
     const voiceBtns = document.querySelectorAll("#voice-group button");
     const bgBtns = document.querySelectorAll("#bg-group button");
+    const modeBtns = document.querySelectorAll("#mode-group button");
+
+    const videoUrlEl = document.getElementById("video-url");
+    if (videoUrlEl) {
+        const handleUrlChange = (val) => {
+            if (val.includes("douyin.com")) {
+                const srcLangSelect = document.getElementById("src-lang");
+                if (srcLangSelect) {
+                    srcLangSelect.value = "zh-CN";
+                }
+            }
+        };
+        videoUrlEl.addEventListener("input", (e) => handleUrlChange(e.target.value));
+        videoUrlEl.addEventListener("paste", (e) => {
+            setTimeout(() => handleUrlChange(videoUrlEl.value), 0);
+        });
+    }
 
     voiceBtns.forEach(btn => {
         btn.addEventListener("click", () => {
@@ -1402,6 +1431,62 @@
             activeBgMode = btn.getAttribute("data-val");
         });
     });
+
+    modeBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            modeBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeMode = btn.getAttribute("data-val");
+            onModeChanged(activeMode);
+        });
+    });
+
+    function onModeChanged(mode) {
+        const voiceConfig = document.getElementById("voice-config-group");
+        const bgConfig = document.getElementById("bg-config-group");
+        const pauseForSpeakers = document.getElementById("pause-for-speakers");
+        const pauseForSpeakersContainer = pauseForSpeakers ? pauseForSpeakers.closest(".checkbox-container") : null;
+        const btnSubmit = document.getElementById("btn-submit");
+
+        if (mode === "subtitle_only") {
+            if (voiceConfig) {
+                voiceConfig.style.opacity = "0.35";
+                voiceConfig.style.pointerEvents = "none";
+            }
+            if (bgConfig) {
+                bgConfig.style.opacity = "0.35";
+                bgConfig.style.pointerEvents = "none";
+            }
+            if (pauseForSpeakersContainer) {
+                pauseForSpeakersContainer.style.display = "none";
+            }
+            if (pauseForSpeakers) {
+                pauseForSpeakers.checked = false;
+            }
+            if (btnSubmit) {
+                btnSubmit.textContent = "Bắt đầu xử lý phụ đề";
+            }
+        } else {
+            if (voiceConfig) {
+                voiceConfig.style.opacity = "1";
+                voiceConfig.style.pointerEvents = "auto";
+            }
+            if (bgConfig) {
+                bgConfig.style.opacity = "1";
+                bgConfig.style.pointerEvents = "auto";
+            }
+            if (pauseForSpeakersContainer) {
+                pauseForSpeakersContainer.style.display = "flex";
+            }
+            if (btnSubmit) {
+                btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
+            }
+        }
+    }
+
+    function getSubmitButtonText() {
+        return activeMode === "subtitle_only" ? "Bắt đầu xử lý phụ đề" : "Bắt đầu xử lý lồng tiếng";
+    }
 
     function toggleAdvancedSettings() {
         const content = document.getElementById("advanced-settings");
@@ -1432,7 +1517,8 @@
             publish_youtube: document.getElementById("pub-youtube").checked,
             publish_facebook: document.getElementById("pub-facebook").checked,
             pause_for_speakers: document.getElementById("pause-for-speakers").checked,
-            burn_subtitles: document.getElementById("burn-subtitles").checked
+            burn_subtitles: document.getElementById("burn-subtitles").checked,
+            mode: activeMode
         };
 
         const btnSubmit = document.getElementById("btn-submit");
@@ -1475,7 +1561,7 @@
         } catch (err) {
             showToast("Lỗi: " + err.message, "error");
             btnSubmit.disabled = false;
-            btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
+            btnSubmit.textContent = getSubmitButtonText();
         }
     }
 
@@ -1569,7 +1655,7 @@
 
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
-        btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
+        btnSubmit.textContent = getSubmitButtonText();
 
         document.getElementById("speaker-config-card").style.display = "flex";
         document.getElementById("output-card").style.display = "none";
@@ -1628,7 +1714,8 @@
             bg_duck_db: parseFloat(document.getElementById("bg-gain").value),
             publish_youtube: document.getElementById("pub-youtube").checked,
             publish_facebook: document.getElementById("pub-facebook").checked,
-            burn_subtitles: document.getElementById("burn-subtitles").checked
+            burn_subtitles: document.getElementById("burn-subtitles").checked,
+            mode: activeMode
         };
 
         try {
@@ -1799,7 +1886,7 @@
     function handlePipelineSuccess(result) {
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
-        btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
+        btnSubmit.textContent = getSubmitButtonText();
 
         const outputCard = document.getElementById("output-card");
         outputCard.style.display = "flex";
@@ -1870,7 +1957,7 @@
     function handlePipelineFailure(errMessage) {
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
-        btnSubmit.textContent = "Bắt đầu xử lý lồng tiếng";
+        btnSubmit.textContent = getSubmitButtonText();
         
         // Show control wizard again on error
         document.getElementById("control-card").style.display = "flex";

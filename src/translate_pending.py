@@ -10,7 +10,7 @@ continue.
 import os
 
 
-def write_hint(work_dir: str, target_lang: str, source_lang: str) -> str:
+def write_hint(work_dir: str, target_lang: str, source_lang: str, mode: str = "dub_audio") -> str:
     """Create ``<work_dir>/TRANSLATE_PENDING.txt`` and return its path."""
     is_vi = target_lang == "vi-VN"
     target_name = "Vietnamese" if is_vi else "Japanese"
@@ -40,6 +40,21 @@ def write_hint(work_dir: str, target_lang: str, source_lang: str) -> str:
   Chinese. Watch false friends (手紙 JP=letter / ZH=toilet paper).
 - Bleeped segments (text contains only "**"): use a short exclamation
   like "あー" or "うっ" — DO NOT output "..." or empty string."""
+
+    if mode == "subtitle_only":
+        duration_section = ""
+        next_steps = "continue with subtitle formatting, video merge (preserving original audio), and metadata generation."
+    else:
+        duration_section = f"""
+DURATION-AWARE LENGTH (CRITICAL):
+- Each segment carries duration (seconds). The TTS that runs after this
+  step must fit in that window. Spoken pace: {pace}.
+- Short (<4s): use the shortest natural phrasing, drop particles.
+- Medium (4-8s): natural casual speech, prefer shorter synonyms.
+- Long (>8s): more room, but still tight — avoid bloat.
+- When in doubt, choose the SHORTER form.
+"""
+        next_steps = "continue with TTS, audio fitting, video merge, and metadata generation."
 
     hint_path = os.path.join(work_dir, "TRANSLATE_PENDING.txt")
     with open(hint_path, "w", encoding="utf-8") as f:
@@ -86,7 +101,7 @@ PATH B — No API key, no Claude Code (ChatGPT / Gemini web UI)
     python {resume_script} --resume "{work_dir}" --file <original_video.mp4>
 
 ----- PROMPT TO COPY -----
-You are translating an ASR transcript for a YouTube dub from {source_lang}
+You are translating an ASR transcript for a YouTube video from {source_lang}
 to {target_name}. Below is a JSON array of segments. Each has: id, text,
 start, end, duration (seconds).
 
@@ -99,15 +114,7 @@ OUTPUT FORMAT (STRICT):
 
 STYLE:
 {style_rules}
-
-DURATION-AWARE LENGTH (CRITICAL):
-- Each segment carries duration (seconds). The TTS that runs after this
-  step must fit in that window. Spoken pace: {pace}.
-- Short (<4s): use the shortest natural phrasing, drop particles.
-- Medium (4-8s): natural casual speech, prefer shorter synonyms.
-- Long (>8s): more room, but still tight — avoid bloat.
-- When in doubt, choose the SHORTER form.
-
+{duration_section}
 CONSISTENCY:
 - Use the same translation for recurring character names, recurring terms,
   and register/pronouns across the whole transcript.
@@ -122,8 +129,7 @@ the fences before saving. Verify the saved file with:
 
     python -c "import json; d=json.load(open(r'{work_dir}/{out_file}', encoding='utf-8')); print('segments:', len(d)); print('first {out_field}:', d[0].get('{out_field}'))"
 
-The pipeline will detect {out_file} on resume, skip Step 4, and continue
-with TTS, audio fitting, video merge, and metadata generation.
+The pipeline will detect {out_file} on resume, skip Step 4, and {next_steps}
 """
         )
     return hint_path

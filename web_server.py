@@ -56,6 +56,7 @@ class PipelineRequest(BaseModel):
     pause_for_speakers: bool = False
     speaker_map: Optional[Dict[str, str]] = None
     burn_subtitles: bool = False
+    mode: Optional[str] = "dub_audio"
 
 
 def execute_pipeline(task_id: str, req: PipelineRequest):
@@ -83,8 +84,8 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
         else:
             voice_id = config.VIETNAMESE_VOICEID_FEMALE
 
-        # Ensure voice ID is configured
-        if not voice_id:
+        # Ensure voice ID is configured only if mode is not subtitle_only
+        if req.mode != "subtitle_only" and not voice_id:
             raise ValueError(f"Voice ID for '{req.voice}' is not configured in .env")
 
         # Run pipeline
@@ -92,7 +93,7 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
             url=req.url,
             file_path=req.file_path,
             source_lang=req.source_lang,
-            voice_id=voice_id,
+            voice_id=voice_id or "",
             skip_video=False,
             output_dir=os.path.join(config.OUTPUT_DIR, "VN"),
             resume_dir=req.resume_dir,
@@ -103,6 +104,7 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
             pause_for_speakers=req.pause_for_speakers,
             speaker_map=req.speaker_map,
             burn_subtitles=req.burn_subtitles,
+            mode=req.mode or "dub_audio",
         )
 
         with tasks_lock:

@@ -199,8 +199,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Burn Vietnamese subtitles into the output video",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["dub_audio", "subtitle_only"],
+        default="dub_audio",
+        help="Output mode: 'dub_audio' (default) or 'subtitle_only'",
+    )
+    parser.add_argument(
+        "--subtitle-only",
+        action="store_true",
+        help="Shortcut to set --mode=subtitle_only",
+    )
 
     args = parser.parse_args()
+    if args.subtitle_only:
+        args.mode = "subtitle_only"
+
     if args.no_bg_music:
         args.bg_mode = "none"
 
@@ -215,18 +229,27 @@ def parse_args() -> argparse.Namespace:
             parser.error("No video specified. Use --url, --file, --resume, or set VIETNAMESE_VIDEO_URL in .env")
 
     # Resolve voice ID: CLI flag > .env Voice_type > interactive prompt
-    if args.voice == "male":
-        args.voice_id = config.VIETNAMESE_VOICEID_MALE
-    elif args.voice == "female":
-        args.voice_id = config.VIETNAMESE_VOICEID_FEMALE
-    elif config.VOICE_TYPE == "male":
-        args.voice_id = config.VIETNAMESE_VOICEID_MALE
-        logger.info("Using VOICE_TYPE=male from .env")
-    elif config.VOICE_TYPE == "female":
-        args.voice_id = config.VIETNAMESE_VOICEID_FEMALE
-        logger.info("Using VOICE_TYPE=female from .env")
+    if args.mode == "subtitle_only":
+        # No voice prompt needed for subtitle-only mode
+        if args.voice == "male":
+            args.voice_id = config.VIETNAMESE_VOICEID_MALE
+        elif args.voice == "female":
+            args.voice_id = config.VIETNAMESE_VOICEID_FEMALE
+        else:
+            args.voice_id = ""
     else:
-        args.voice_id = _ask_voice_gender()
+        if args.voice == "male":
+            args.voice_id = config.VIETNAMESE_VOICEID_MALE
+        elif args.voice == "female":
+            args.voice_id = config.VIETNAMESE_VOICEID_FEMALE
+        elif config.VOICE_TYPE == "male":
+            args.voice_id = config.VIETNAMESE_VOICEID_MALE
+            logger.info("Using VOICE_TYPE=male from .env")
+        elif config.VOICE_TYPE == "female":
+            args.voice_id = config.VIETNAMESE_VOICEID_FEMALE
+            logger.info("Using VOICE_TYPE=female from .env")
+        else:
+            args.voice_id = _ask_voice_gender()
 
     return args
 
@@ -283,6 +306,7 @@ def run_pipeline_vi(
     pause_for_speakers: bool = False,
     speaker_map: dict | None = None,
     burn_subtitles: bool = False,
+    mode: str = "dub_audio",
 ) -> dict:
     start_time = time.time()
 
@@ -296,6 +320,18 @@ def run_pipeline_vi(
         work_dir = resume_dir
         folder_name = os.path.basename(os.path.normpath(work_dir))
         logger.info(f"Resuming work directory: {work_dir}")
+        
+        # Load mode from existing report.json if present
+        report_path = os.path.join(work_dir, "report.json")
+        if os.path.exists(report_path):
+            try:
+                with open(report_path, "r", encoding="utf-8") as f:
+                    old_report = json.load(f)
+                if "mode" in old_report:
+                    mode = old_report["mode"]
+                    logger.info(f"Loaded mode '{mode}' from existing report.json")
+            except Exception as e:
+                logger.warning(f"Could not load mode from existing report.json: {e}")
     else:
         folder_name = datetime.now().strftime("%Y%m%d%H%M%S") + "_vi"
         work_dir = ensure_dir(os.path.join(output_dir, folder_name))
@@ -322,25 +358,28 @@ def run_pipeline_vi(
     # --- Step 2.5: Resolve background track for the dub merge ---
     background_path: str | None = None
     background_gain_db: float = 0.0
-    if bg_mode == "demucs":
-        logger.info("=" * 60)
-        logger.info("STEP 2.5: Separating vocals from original audio (Demucs)")
-        sep = separate_vocals(audio_path, work_dir)
-        background_path = sep.get("no_vocals")
-        if background_path is None:
-            logger.warning(
-                "Vocal separation unavailable — dubbed audio will use a silent base"
+    if mode == "dub_audio":
+        if bg_mode == "demucs":
+            logger.info("=" * 60)
+            logger.info("STEP 2.5: Separating vocals from original audio (Demucs)")
+            sep = separate_vocals(audio_path, work_dir)
+            background_path = sep.get("no_vocals")
+            if background_path is None:
+                logger.warning(
+                    "Vocal separation unavailable — dubbed audio will use a silent base"
+                )
+        elif bg_mode == "duck":
+            logger.info("=" * 60)
+            logger.info(
+                f"STEP 2.5: Ducking original audio by {bg_duck_db:+.1f} dB "
+                "(no vocal separation)"
             )
-    elif bg_mode == "duck":
-        logger.info("=" * 60)
-        logger.info(
-            f"STEP 2.5: Ducking original audio by {bg_duck_db:+.1f} dB "
-            "(no vocal separation)"
-        )
-        background_path = audio_path
-        background_gain_db = bg_duck_db
-    elif bg_mode == "none":
-        logger.info("STEP 2.5 skipped: --bg-mode=none, dubbed audio uses silent base")
+            background_path = audio_path
+            background_gain_db = bg_duck_db
+        elif bg_mode == "none":
+            logger.info("STEP 2.5 skipped: --bg-mode=none, dubbed audio uses silent base")
+    else:
+        logger.info("STEP 2.5 skipped: subtitle-only mode does not process background audio")
 
     # --- Step 3: Speech-to-Text (ASR) ---
     logger.info("=" * 60)
@@ -365,21 +404,80 @@ def run_pipeline_vi(
             segments = json.load(f)
     else:
         try:
-            logger.info("Running automatic translation...")
-            from src.translator import translate_segments
-            translated_segments = translate_segments(segments, source_lang)
-            # Save the translation
+            logger.info("Running automatic contextual translation...")
+            video_context_path = os.path.join(work_dir, "video_context.json")
+            character_bible_path = os.path.join(work_dir, "character_bible.json")
+            glossary_path = os.path.join(work_dir, "glossary.json")
+            quality_report_path = os.path.join(work_dir, "translation_quality_report.json")
+            repair_report_path = os.path.join(work_dir, "translation_repair_report.json")
+
+            from src.context_builder import build_video_context
+            from src.glossary_builder import build_glossary
+            from src.character_profiler import build_character_bible
+            from src.contextual_translator import translate_segments_contextual
+            from src.translation_validator import validate_translation
+            from src.timeline_rewriter import rewrite_timeline
+
+            logger.info("Building context profiles...")
+            video_context = build_video_context(segments, video_context_path)
+            glossary = build_glossary(segments, video_context, glossary_path)
+            character_bible = build_character_bible(segments, video_context, character_bible_path)
+
+            translated_segments = translate_segments_contextual(
+                segments, video_context, glossary, character_bible, source_lang
+            )
+
+            logger.info("Validating translation...")
+            quality_report = validate_translation(translated_segments, quality_report_path, mode=mode)
+
+            if quality_report["bad_segments"] > 0:
+                from src.translation_repair import repair_translation
+                logger.info(f"Validator found {quality_report['bad_segments']} bad segments. Running repair...")
+                translated_segments = repair_translation(
+                    translated_segments, quality_report["issues"],
+                    video_context, glossary, character_bible, repair_report_path
+                )
+                logger.info("Re-validating translation quality post-repair...")
+                quality_report = validate_translation(translated_segments, quality_report_path, mode=mode)
+
+                if quality_report["bad_segments"] > 0:
+                    logger.error("Critical translation errors could not be automatically repaired.")
+                    severe_errors = [iss for iss in quality_report["issues"] if iss["severity"] == "error"]
+                    if severe_errors:
+                        raise RuntimeError("Critical translation errors could not be automatically repaired.")
+
+            logger.info("Running timeline rewriter...")
+            translated_segments = rewrite_timeline(translated_segments, video_context, character_bible)
+
             with open(transcript_vi_path, "w", encoding="utf-8") as f:
                 json.dump(translated_segments, f, ensure_ascii=False, indent=2)
             segments = translated_segments
             generate_srt(segments, os.path.join(work_dir, "transcript_vi.srt"), text_field="text_vi")
-            logger.info("Automatic translation complete.")
+            logger.info("Automatic contextual translation complete.")
         except Exception as e:
-            logger.error(f"Automatic translation failed: {e}")
-            logger.info("Falling back to manual translation mode...")
-            _write_translate_pending_hint(work_dir, "vi-VN", source_lang)
-            logger.warning("Translation pending — see TRANSLATE_PENDING.txt in work dir")
-            return {"status": "translate_pending", "work_dir": work_dir}
+            logger.error(f"Automatic contextual translation failed: {e}")
+            try:
+                logger.info("Falling back to old translation...")
+                from src.translator import translate_segments
+                translated_segments = translate_segments(segments, source_lang)
+                for s in translated_segments:
+                    s["literal_vi"] = s.get("literal_vi", s["text_vi"])
+                    s["dub_vi"] = s.get("dub_vi", s["text_vi"])
+                    s["final_dub_vi"] = s.get("final_dub_vi", s["text_vi"])
+                    s["timing_rewrite_applied"] = False
+                    s["original_dub_vi"] = s["text_vi"]
+                
+                with open(transcript_vi_path, "w", encoding="utf-8") as f:
+                    json.dump(translated_segments, f, ensure_ascii=False, indent=2)
+                segments = translated_segments
+                generate_srt(segments, os.path.join(work_dir, "transcript_vi.srt"), text_field="text_vi")
+                logger.info("Fallback translation complete.")
+            except Exception as ex:
+                logger.error(f"Fallback translation also failed: {ex}")
+                logger.info("Falling back to manual translation mode...")
+                _write_translate_pending_hint(work_dir, "vi-VN", source_lang, mode=mode)
+                logger.warning("Translation pending — see TRANSLATE_PENDING.txt in work dir")
+                return {"status": "translate_pending", "work_dir": work_dir}
 
     # --- Step 4.5: Speaker / Character Detection ---
     logger.info("=" * 60)
@@ -429,95 +527,121 @@ def run_pipeline_vi(
         except Exception as e:
             logger.error(f"Failed to load custom voice map: {e}")
 
-    for seg in segments:
-        seg_path = os.path.join(seg_dir, f"seg_{seg['id']:03d}.wav")
-        if os.path.exists(seg_path) and os.path.getsize(seg_path) > 0:
-            cached = _ASeg.from_wav(seg_path)
-            result = {
-                "path": seg_path,
-                "actual_duration": round(len(cached) / 1000.0, 3),
-                "speed_adjusted": False,
-                "rate_applied": "cached",
-            }
-            logger.info(
-                f"  Segment {seg['id']}: cached ({result['actual_duration']:.1f}s, "
-                f"target {seg['duration']:.1f}s)"
-            )
-        else:
-            # Pick voice based on speaker gender (falls back to global voice_id)
-            seg_voice_id = get_voice_id_for_segment(seg, voice_id, voice_map=voice_map)
-            speaker_label = seg.get('speaker', '')
-            gender_label = seg.get('speaker_gender', '')
-            if speaker_label:
-                mapped_by = "default fallback"
-                if voice_map and speaker_label in voice_map:
-                    mapped_by = "custom UI map"
-                elif hasattr(config, "VOICE_CHARACTER_MAP") and config.VOICE_CHARACTER_MAP and speaker_label in config.VOICE_CHARACTER_MAP:
-                    mapped_by = "config map"
-                elif speaker_label == "NARRATOR" and getattr(config, "VOICE_NARRATOR", ""):
-                    mapped_by = "narrator fallback"
-                
+    if mode == "dub_audio":
+        for seg in segments:
+            seg_path = os.path.join(seg_dir, f"seg_{seg['id']:03d}.wav")
+            if os.path.exists(seg_path) and os.path.getsize(seg_path) > 0:
+                cached = _ASeg.from_wav(seg_path)
+                result = {
+                    "path": seg_path,
+                    "actual_duration": round(len(cached) / 1000.0, 3),
+                    "speed_adjusted": False,
+                    "rate_applied": "cached",
+                }
                 logger.info(
-                    f"  Segment {seg['id']} [{speaker_label}/{gender_label}]: "
-                    f"voice_id={seg_voice_id} ({mapped_by})"
+                    f"  Segment {seg['id']}: cached ({result['actual_duration']:.1f}s, "
+                    f"target {seg['duration']:.1f}s)"
                 )
-            result = synthesize_segment_vi(
-                text_vi=seg["text_vi"],
-                output_path=seg_path,
-                target_duration=seg["duration"],
-                voice_id=seg_voice_id,
-            )
-            logger.info(
-                f"  Segment {seg['id']}: {result['actual_duration']:.1f}s "
-                f"(target: {seg['duration']:.1f}s, speed: {result['rate_applied']})"
-            )
-        tts_results.append(result)
+            else:
+                # Pick voice based on speaker gender (falls back to global voice_id)
+                seg_voice_id = get_voice_id_for_segment(seg, voice_id, voice_map=voice_map)
+                speaker_label = seg.get('speaker', '')
+                gender_label = seg.get('speaker_gender', '')
+                if speaker_label:
+                    mapped_by = "default fallback"
+                    if voice_map and speaker_label in voice_map:
+                        mapped_by = "custom UI map"
+                    elif hasattr(config, "VOICE_CHARACTER_MAP") and config.VOICE_CHARACTER_MAP and speaker_label in config.VOICE_CHARACTER_MAP:
+                        mapped_by = "config map"
+                    elif speaker_label == "NARRATOR" and getattr(config, "VOICE_NARRATOR", ""):
+                        mapped_by = "narrator fallback"
+                    
+                    logger.info(
+                        f"  Segment {seg['id']} [{speaker_label}/{gender_label}]: "
+                        f"voice_id={seg_voice_id} ({mapped_by})"
+                    )
+                result = synthesize_segment_vi(
+                    text_vi=seg["text_vi"],
+                    output_path=seg_path,
+                    target_duration=seg["duration"],
+                    voice_id=seg_voice_id,
+                )
+                logger.info(
+                    f"  Segment {seg['id']}: {result['actual_duration']:.1f}s "
+                    f"(target: {seg['duration']:.1f}s, speed: {result['rate_applied']})"
+                )
+            tts_results.append(result)
+    else:
+        logger.info("Skipping TTS synthesis in subtitle-only mode")
+        for seg in segments:
+            tts_results.append({
+                "path": "",
+                "actual_duration": seg["duration"],
+                "speed_adjusted": False,
+                "rate_applied": "none",
+            })
 
     # --- Step 6: Slow down + Fit-to-timeline + Merge audio ---
-    logger.info("=" * 60)
-    slow_factor = config.AUDIO_SLOW_FACTOR
-    total_duration = max(seg["end"] for seg in segments) + 1.0 if segments else 0
-
-    if slow_factor < 1.0:
-        slow_pct = round((1.0 - slow_factor) * 100)
-        logger.info(f"STEP 6a: Slowing segments {slow_pct}% (atempo={slow_factor})")
-        slow_dir = ensure_dir(os.path.join(work_dir, f"segments_slow{slow_pct}"))
-        for seg in segments:
-            src = os.path.join(seg_dir, f"seg_{seg['id']:03d}.wav")
-            dst = os.path.join(slow_dir, f"seg_{seg['id']:03d}.wav")
-            if os.path.exists(src):
-                subprocess.run(
-                    ["ffmpeg", "-y", "-i", src, "-filter:a", f"atempo={slow_factor}", dst],
-                    capture_output=True, text=True,
-                )
-        pre_fit_dir = slow_dir
-    else:
-        pre_fit_dir = seg_dir
-
-    logger.info("STEP 6b: Fitting segments to timeline (avoid overlap)")
-    fit_dir = ensure_dir(os.path.join(work_dir, "segments_fit"))
-    fit_adjustments = fit_segments_to_timeline(segments, pre_fit_dir, fit_dir)
-
-    fit_log_path = os.path.join(work_dir, "fit_adjustments.json")
-    with open(fit_log_path, "w", encoding="utf-8") as f:
-        json.dump(fit_adjustments, f, ensure_ascii=False, indent=2)
-
-    logger.info("STEP 6c: Merging audio segments")
     merged_audio_path = os.path.join(work_dir, "audio_vi_full.wav")
-    merge_segments(
-        segments, fit_dir, merged_audio_path, total_duration,
-        background_path=background_path,
-        background_gain_db=background_gain_db,
-    )
+    if mode == "dub_audio":
+        logger.info("=" * 60)
+        slow_factor = config.AUDIO_SLOW_FACTOR
+        total_duration = max(seg["end"] for seg in segments) + 1.0 if segments else 0
+
+        if slow_factor < 1.0:
+            slow_pct = round((1.0 - slow_factor) * 100)
+            logger.info(f"STEP 6a: Slowing segments {slow_pct}% (atempo={slow_factor})")
+            slow_dir = ensure_dir(os.path.join(work_dir, f"segments_slow{slow_pct}"))
+            for seg in segments:
+                src = os.path.join(seg_dir, f"seg_{seg['id']:03d}.wav")
+                dst = os.path.join(slow_dir, f"seg_{seg['id']:03d}.wav")
+                if os.path.exists(src):
+                    subprocess.run(
+                        ["ffmpeg", "-y", "-i", src, "-filter:a", f"atempo={slow_factor}", dst],
+                        capture_output=True, text=True,
+                    )
+            pre_fit_dir = slow_dir
+        else:
+            pre_fit_dir = seg_dir
+
+        logger.info("STEP 6b: Fitting segments to timeline (avoid overlap)")
+        fit_dir = ensure_dir(os.path.join(work_dir, "segments_fit"))
+        fit_adjustments = fit_segments_to_timeline(segments, pre_fit_dir, fit_dir)
+
+        fit_log_path = os.path.join(work_dir, "fit_adjustments.json")
+        with open(fit_log_path, "w", encoding="utf-8") as f:
+            json.dump(fit_adjustments, f, ensure_ascii=False, indent=2)
+
+        logger.info("STEP 6c: Merging audio segments")
+        merge_segments(
+            segments, fit_dir, merged_audio_path, total_duration,
+            background_path=background_path,
+            background_gain_db=background_gain_db,
+        )
+    else:
+        logger.info("STEP 6 skipped: subtitle-only mode does not process audio")
 
     # --- Step 7: Merge video (optional) ---
     dubbed_video_path = None
     if not skip_video:
         logger.info("=" * 60)
-        logger.info("STEP 7: Creating dubbed video")
-        dubbed_video_path = os.path.join(work_dir, "dubbed_video.mp4")
-        srt_path = os.path.join(work_dir, "transcript_vi.srt") if burn_subtitles else None
-        merge_video(video_path, merged_audio_path, dubbed_video_path, srt_path=srt_path)
+        if mode == "subtitle_only":
+            logger.info("STEP 7: Creating subtitled video (original audio preserved)")
+            subtitled_video_path = os.path.join(work_dir, "subtitled_video.mp4")
+            if burn_subtitles:
+                srt_path = os.path.join(work_dir, "transcript_vi.srt")
+                from src.video_merger import burn_subtitles_to_video
+                burn_subtitles_to_video(video_path, srt_path, subtitled_video_path)
+            else:
+                import shutil
+                shutil.copy2(video_path, subtitled_video_path)
+                logger.info(f"Copying original video to output: {subtitled_video_path}")
+            dubbed_video_path = subtitled_video_path
+        else:
+            logger.info("STEP 7: Creating dubbed video")
+            dubbed_video_path = os.path.join(work_dir, "dubbed_video.mp4")
+            srt_path = os.path.join(work_dir, "transcript_vi.srt") if burn_subtitles else None
+            merge_video(video_path, merged_audio_path, dubbed_video_path, srt_path=srt_path)
 
     # --- Step 8: Generate thumbnails + YouTube metadata ---
     content_result = {"thumbnails": [], "metadata": {}}
@@ -566,6 +690,7 @@ def run_pipeline_vi(
     elapsed = time.time() - start_time
     report = {
         "session_id": folder_name,
+        "mode": mode,
         "source_url": url,
         "source_language": lang_code,
         "target_language": "vi-VN",
@@ -586,7 +711,7 @@ def run_pipeline_vi(
             "transcript_original_srt": os.path.join(work_dir, "transcript_original.srt"),
             "transcript_vi_json": os.path.join(work_dir, "transcript_vi.json"),
             "transcript_vi_srt": os.path.join(work_dir, "transcript_vi.srt"),
-            "audio_vi_full": merged_audio_path,
+            "audio_vi_full": merged_audio_path if mode == "dub_audio" else None,
             "dubbed_video": dubbed_video_path,
             "thumbnails": content_result.get("thumbnails", []),
             "youtube_metadata": content_result.get("metadata_file"),
@@ -638,6 +763,7 @@ def main():
             publish_facebook=args.publish_facebook,
             pause_for_speakers=args.pause_for_speakers,
             burn_subtitles=args.burn_subtitles,
+            mode=args.mode,
         )
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)
