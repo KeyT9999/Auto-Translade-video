@@ -1,6 +1,12 @@
-"""Glossary Builder — Generates glossary.json from transcript and video context using Gemini/Groq."""
+"""Glossary Builder — Generates glossary.json from transcript and video context."""
+
+from __future__ import annotations
+
+from copy import deepcopy
 import json
 import os
+
+from src.glossary_enforcer import sanitize_glossary
 from src.utils import setup_logging
 
 logger = setup_logging("glossary_builder")
@@ -18,16 +24,30 @@ DEFAULT_GLOSSARY = {
         "咖啡厅": "quán cà phê",
         "我们": "mình / chúng mình",
         "你们": "các bạn / mọi người",
-        "他们": "họ / bọn họ"
+        "他们": "họ / bọn họ",
     }
 }
 
 
+def _merge_default_terms(glossary: dict | None) -> dict:
+    merged = deepcopy(glossary) if isinstance(glossary, dict) else {}
+    terms = dict(DEFAULT_GLOSSARY["terms"])
+    if isinstance(merged.get("terms"), dict):
+        terms.update(merged["terms"])
+    merged["terms"] = terms
+    return merged
+
+
+def _save_glossary(output_path: str, glossary: dict) -> None:
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(glossary, handle, ensure_ascii=False, indent=2)
+
+
 def build_glossary_prompt(segments: list[dict], video_context: dict) -> str:
     sample = segments[:100]
-    transcript_text = "\n".join([f"[{s['id']}] {s.get('text', '')}" for s in sample])
+    transcript_text = "\n".join(f"[{s['id']}] {s.get('text', '')}" for s in sample)
 
-    prompt = f"""You are building a bilingual glossary mapping for translating a video transcript into natural Vietnamese.
+    return f"""You are building a bilingual glossary mapping for translating a video transcript into natural Vietnamese.
 Context of the video:
 Type: {video_context.get('video_type', 'unknown')}
 Topic: {video_context.get('topic', 'unknown')}
@@ -56,46 +76,44 @@ Expected JSON schema:
 Transcript lines:
 {transcript_text}
 """
-    return prompt
+
+
 def build_glossary(segments: list[dict], video_context: dict, output_path: str) -> dict:
     """Build and save glossary.json."""
     if os.path.exists(output_path):
         try:
-            with open(output_path, "r", encoding="utf-8") as f:
-                glossary = json.load(f)
-                logger.info(f"Loaded existing glossary from {output_path}")
-                return glossary
-        except Exception as e:
-            logger.warning(f"Failed to read existing glossary: {e}")
+            with open(output_path, "r", encoding="utf-8") as handle:
+                glossary = sanitize_glossary(_merge_default_terms(json.load(handle)))
+            logger.info("Loaded existing glossary from %s", output_path)
+            _save_glossary(output_path, glossary)
+            return glossary
+        except Exception as exc:
+            logger.warning("Failed to read existing glossary: %s", exc)
 
     logger.info("Generating new glossary...")
     prompt = build_glossary_prompt(segments, video_context)
 
     from src.ai import ai_router
+
     try:
         glossary = ai_router.generate_glossary(prompt)
-    except Exception as e:
-        logger.error(f"Router failed to generate glossary: {e}")
+    except Exception as exc:
+        logger.error("Router failed to generate glossary: %s", exc)
         glossary = None
 
     if not glossary:
         logger.warning("Failed to generate glossary via LLMs, using default glossary fallback.")
-        glossary = DEFAULT_GLOSSARY.copy()
+        glossary = deepcopy(DEFAULT_GLOSSARY)
 
-    # Ensure required structure and merge defaults
     if "terms" not in glossary or not isinstance(glossary["terms"], dict):
-        glossary = DEFAULT_GLOSSARY.copy()
-    else:
-        # Merge default terms if not present
-        for k, v in DEFAULT_GLOSSARY["terms"].items():
-            if k not in glossary["terms"]:
-                glossary["terms"][k] = v
+        glossary = deepcopy(DEFAULT_GLOSSARY)
+
+    glossary = sanitize_glossary(_merge_default_terms(glossary))
 
     try:
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(glossary, f, ensure_ascii=False, indent=2)
-        logger.info(f"Saved glossary to {output_path}")
-    except Exception as e:
-        logger.error(f"Failed to save glossary: {e}")
+        _save_glossary(output_path, glossary)
+        logger.info("Saved glossary to %s", output_path)
+    except Exception as exc:
+        logger.error("Failed to save glossary: %s", exc)
 
     return glossary

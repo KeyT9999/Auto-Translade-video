@@ -6,8 +6,10 @@ Usage:
     python pipeline_vi.py --file video.mp4 --source-lang en
 """
 import argparse
+import importlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -19,7 +21,7 @@ from src.utils import setup_logging, ensure_dir
 from src.downloader import download_video
 from src.audio_extractor import extract_audio
 from src.transcriber import transcribe, save_transcript
-from src.synthesizer_vi import synthesize_segment_vi
+from src.synthesizer_vi import TTSSegmentError, is_valid_audio_file, synthesize_segment_vi
 from src.audio_merger import merge_segments, fit_segments_to_timeline
 from src.vocal_separator import separate_vocals
 from src.video_merger import merge_video
@@ -62,9 +64,14 @@ def _build_timing_guide(report: dict, segments: list[dict], tts_results: list[di
 
     need_edit = 0
     for seg, tts in zip(segments, tts_results):
-        diff = round(tts["actual_duration"] - seg["duration"], 2)
+        actual_duration = float(tts.get("actual_duration", 0.0) or 0.0)
+        diff = round(actual_duration - seg["duration"], 2)
+        tts_status = str(tts.get("status", "")).lower().strip()
 
-        if abs(diff) <= seg["duration"] * 0.3:
+        if tts_status == "failed":
+            status = "PENDING_TTS"
+            need_edit += 1
+        elif abs(diff) <= seg["duration"] * 0.3:
             status = "OK"
         elif diff > 0:
             status = "TOO_LONG"
@@ -80,19 +87,41 @@ def _build_timing_guide(report: dict, segments: list[dict], tts_results: list[di
             "start": seg["start"],
             "end": seg["end"],
             "original_duration": seg["duration"],
-            "vi_duration": tts["actual_duration"],
+            "vi_duration": actual_duration,
             "diff_seconds": diff,
-            "speed_adjusted": tts["speed_adjusted"],
+            "speed_adjusted": bool(tts.get("speed_adjusted", False)),
             "rate_applied": tts.get("rate_applied", ""),
             "status": status,
-            "edit_hint": f"VI {'dài' if diff > 0 else 'ngắn'} hơn {abs(diff):.1f}s"
-                         if status != "OK" else "OK",
+            "edit_hint": (
+                tts.get("error", "Cần chạy lại TTS cho segment này.")
+                if status == "PENDING_TTS"
+                else "OK"
+                if status == "OK"
+                else f"VI {'dài' if diff > 0 else 'ngắn'} hơn {abs(diff):.1f}s"
+            ),
         })
 
     guide["summary"]["segments_need_edit"] = need_edit
     guide["summary"]["segments_ok"] = report["total_segments"] - need_edit
 
     return guide
+
+
+def _write_report_and_timing_guide(
+    work_dir: str,
+    report: dict,
+    segments: list[dict],
+    tts_results: list[dict],
+) -> None:
+    report_path = os.path.join(work_dir, "report.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+
+    timing_guide = _build_timing_guide(report, segments, tts_results)
+    timing_path = os.path.join(work_dir, "timing_guide.json")
+    with open(timing_path, "w", encoding="utf-8") as f:
+        json.dump(timing_guide, f, ensure_ascii=False, indent=2)
+    logger.info(f"Timing guide: {timing_path}")
 
 
 def _get_default_vi_output_dir() -> str:
@@ -289,6 +318,12 @@ def parse_args() -> argparse.Namespace:
         help="Resume an existing work directory. Steps whose outputs already exist are skipped.",
     )
     parser.add_argument(
+        "--from-step",
+        choices=["translate"],
+        default=None,
+        help="When resuming, restart from a specific pipeline step (currently supports: translate).",
+    )
+    parser.add_argument(
         "--bg-mode",
         choices=["demucs", "duck", "none"],
         default="demucs",
@@ -320,6 +355,12 @@ def parse_args() -> argparse.Namespace:
         "--publish-facebook",
         action="store_true",
         help="Upload final video to Facebook Page",
+    )
+    parser.add_argument(
+        "--publish-only",
+        choices=["youtube", "facebook"],
+        default=None,
+        help="Reuse an existing rendered video in --resume session and only publish it to the selected platform.",
     )
     parser.add_argument(
         "--pause-for-speakers",
@@ -388,8 +429,15 @@ def parse_args() -> argparse.Namespace:
         else:
             parser.error("No video specified. Use --url, --file, --resume, or set VIETNAMESE_VIDEO_URL in .env")
 
+    if args.from_step and not args.resume:
+        parser.error("--from-step requires --resume")
+    if args.publish_only and not args.resume:
+        parser.error("--publish-only requires --resume")
+
     # Resolve voice ID: CLI flag > .env Voice_type > interactive prompt
-    if args.mode == "subtitle_only" or args.no_dub_audio:
+    if args.publish_only:
+        args.voice_id = ""
+    elif args.mode == "subtitle_only" or args.no_dub_audio:
         # No voice prompt needed for subtitle-only / no-dub-audio mode
         if args.voice == "male":
             args.voice_id = config.VIETNAMESE_VOICEID_MALE
@@ -472,6 +520,7 @@ def run_pipeline_vi(
     subtitle_font_size: int | None = None,
     mask_opacity: float | None = None,
     no_dub_audio: bool = False,
+    from_step: str | None = None,
 ) -> dict:
     start_time = time.time()
 
@@ -576,11 +625,13 @@ def run_pipeline_vi(
     quality_report_path = os.path.join(work_dir, "translation_quality_report.json")
     repair_report_path = os.path.join(work_dir, "translation_repair_report.json")
 
-    from src.character_profiler import build_character_bible
+    from src.character_profiler import build_character_bible, sanitize_character_bible
     from src.context_builder import build_video_context
-    from src.contextual_translator import translate_segments_contextual
+    contextual_translator_module = importlib.import_module("src.contextual_translator")
+    translate_segments_contextual = contextual_translator_module.translate_segments_contextual
     from src.glossary_builder import build_glossary
-    from src.glossary_enforcer import apply_glossary_to_segments
+    from src.glossary_enforcer import apply_glossary_to_segments, sanitize_glossary
+    from src.subtitle_polisher import polish_subtitle_segments
     from src.subtitle_group_rewriter import rewrite_subtitle_groups
     from src.timeline_rewriter import rewrite_timeline
     from src.translation_repair import repair_translation
@@ -590,19 +641,63 @@ def run_pipeline_vi(
         validate_translation,
     )
 
+    def _persist_json_artifact(path: str, payload: dict) -> None:
+        if not payload:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            logger.warning("Failed to persist JSON artifact %s: %s", path, exc)
+
     video_context = _load_json_if_exists(video_context_path, {})
-    glossary = _load_json_if_exists(glossary_path, {})
-    character_bible = _load_json_if_exists(character_bible_path, {})
-    translation_source = "existing" if os.path.exists(transcript_vi_path) else "contextual"
+    glossary = sanitize_glossary(_load_json_if_exists(glossary_path, {}))
+    character_bible = sanitize_character_bible(_load_json_if_exists(character_bible_path, {}))
+    if glossary:
+        _persist_json_artifact(glossary_path, glossary)
+    if character_bible:
+        _persist_json_artifact(character_bible_path, character_bible)
+    rerun_translation = from_step == "translate"
+    translation_source = "existing" if os.path.exists(transcript_vi_path) and not rerun_translation else "contextual"
     cache_hash = None
 
+    translation_pending_error_cls = getattr(contextual_translator_module, "TranslationPendingError", None)
+
+    def _is_translation_pending_error(exc: Exception) -> bool:
+        return isinstance(translation_pending_error_cls, type) and isinstance(exc, translation_pending_error_cls)
+
+    def _extract_failed_ranges(exc: Exception) -> list[str]:
+        failed_windows = getattr(exc, "failed_windows", None)
+        if not isinstance(failed_windows, list):
+            return []
+
+        failed_ranges: list[str] = []
+        for item in failed_windows:
+            if isinstance(item, dict):
+                range_key = item.get("range")
+                if range_key:
+                    failed_ranges.append(str(range_key))
+        return failed_ranges
+
     def finalize_translation_segments(candidate_segments: list[dict]) -> tuple[list[dict], dict]:
+        def _apply_subtitle_quality_passes(pass_segments: list[dict]) -> list[dict]:
+            pass_segments = apply_glossary_to_segments(pass_segments, glossary)
+            if translation_mode == "subtitle_only":
+                pass_segments = polish_subtitle_segments(pass_segments, character_bible)
+                pass_segments = _synchronize_translation_segments(
+                    pass_segments,
+                    translation_mode,
+                    ensure_default_speaker=True,
+                )
+                pass_segments = apply_glossary_to_segments(pass_segments, glossary)
+            return pass_segments
+
         candidate_segments = _synchronize_translation_segments(
             candidate_segments,
             translation_mode,
             ensure_default_speaker=subtitle_mode,
         )
-        candidate_segments = apply_glossary_to_segments(candidate_segments, glossary)
+        candidate_segments = _apply_subtitle_quality_passes(candidate_segments)
 
         logger.info("Validating translation...")
         quality_report = validate_translation(
@@ -641,7 +736,7 @@ def run_pipeline_vi(
                 translation_mode,
                 ensure_default_speaker=subtitle_mode,
             )
-            candidate_segments = apply_glossary_to_segments(candidate_segments, glossary)
+            candidate_segments = _apply_subtitle_quality_passes(candidate_segments)
             after_snapshot = _translation_text_snapshot(candidate_segments, translation_mode)
             changed_count = sum(
                 1 for seg_id in targeted_ids if before_snapshot.get(seg_id) != after_snapshot.get(seg_id)
@@ -680,7 +775,7 @@ def run_pipeline_vi(
                 translation_mode,
                 ensure_default_speaker=subtitle_mode,
             )
-            candidate_segments = apply_glossary_to_segments(candidate_segments, glossary)
+            candidate_segments = _apply_subtitle_quality_passes(candidate_segments)
 
         if translation_mode == "subtitle_only":
             candidate_segments = rewrite_subtitle_groups(candidate_segments)
@@ -689,6 +784,7 @@ def run_pipeline_vi(
                 translation_mode,
                 ensure_default_speaker=True,
             )
+            candidate_segments = _apply_subtitle_quality_passes(candidate_segments)
 
         final_report = validate_translation(
             candidate_segments,
@@ -699,12 +795,14 @@ def run_pipeline_vi(
         )
         return candidate_segments, final_report
 
-    if os.path.exists(transcript_vi_path):
+    if os.path.exists(transcript_vi_path) and not rerun_translation:
         logger.info(f"Reusing existing translation: {transcript_vi_path}")
         with open(transcript_vi_path, encoding="utf-8") as f:
             segments = json.load(f)
     else:
         try:
+            if rerun_translation and os.path.exists(transcript_vi_path):
+                logger.info("Re-running translation from STEP 4 because --from-step=translate was requested.")
             logger.info("Running automatic contextual translation...")
             if not video_context:
                 logger.info("Building context profiles...")
@@ -733,6 +831,30 @@ def run_pipeline_vi(
                 translation_source = "contextual"
             logger.info("Automatic contextual translation complete.")
         except Exception as e:
+            failed_ranges = _extract_failed_ranges(e)
+            if _is_translation_pending_error(e):
+                logger.warning("Automatic contextual translation incomplete: %s", e)
+            else:
+                logger.error("Automatic contextual translation failed: %s", e)
+            _write_translate_pending_hint(
+                work_dir,
+                "vi-VN",
+                source_lang,
+                mode=mode,
+                failed_ranges=failed_ranges or None,
+            )
+            logger.warning("Translation pending - see TRANSLATE_PENDING.txt in work dir")
+            return {
+                "status": "translate_pending",
+                "work_dir": work_dir,
+                "failed_ranges": failed_ranges or None,
+            }
+            logger.warning("Translation pending â€” see TRANSLATE_PENDING.txt in work dir")
+            return {
+                "status": "translate_pending",
+                "work_dir": work_dir,
+                "failed_ranges": failed_ranges or None,
+            }
             logger.error(f"Automatic contextual translation failed: {e}")
             try:
                 logger.info("Falling back to old translation...")
@@ -761,6 +883,11 @@ def run_pipeline_vi(
             save_translation_to_cache(cache_hash, segments)
     except Exception as quality_exc:
         logger.error("Translation quality flow failed: %s", quality_exc)
+        _write_translate_pending_hint(work_dir, "vi-VN", source_lang, mode=mode)
+        logger.warning("Translation pending - see TRANSLATE_PENDING.txt in work dir")
+        return {"status": "translate_pending", "work_dir": work_dir}
+        logger.warning("Translation pending â€” see TRANSLATE_PENDING.txt in work dir")
+        return {"status": "translate_pending", "work_dir": work_dir}
         if translation_source in {"contextual", "cache"}:
             try:
                 logger.info("Falling back to old translation after contextual QA failure...")
@@ -796,6 +923,13 @@ def run_pipeline_vi(
         os.path.join(work_dir, "transcript_vi.srt"),
         text_field="subtitle_vi",
     )
+    translate_pending_path = os.path.join(work_dir, "TRANSLATE_PENDING.txt")
+    if os.path.exists(translate_pending_path):
+        try:
+            os.remove(translate_pending_path)
+            logger.info("Removed stale translation pending hint: %s", translate_pending_path)
+        except OSError as exc:
+            logger.warning("Could not remove stale translation pending hint %s: %s", translate_pending_path, exc)
 
     # --- Step 4.5: Speaker / Character Detection ---
     if subtitle_mode:
@@ -830,10 +964,17 @@ def run_pipeline_vi(
 
     # --- Step 5: TTS for each segment (LucyLab API) ---
     tts_results = []
+    tts_cached_ids: list[int] = []
+    tts_retried_ids: list[int] = []
+    tts_new_ids: list[int] = []
+    failed_tts_segments: list[dict] = []
+    pending_tts_path = os.path.join(work_dir, "tts_pending_segments.json")
+    tts_cache_dir = os.path.join(work_dir, "tts_segments")
     if mode == "dub_audio" and not subtitle_mode:
         logger.info("=" * 60)
         logger.info("STEP 5: Synthesizing Vietnamese audio (LucyLab TTS)")
         seg_dir = ensure_dir(os.path.join(work_dir, "segments"))
+        tts_cache_dir = ensure_dir(os.path.join(work_dir, "tts_segments"))
 
         # Save speaker_map to voice_character_map.json if provided
         if speaker_map:
@@ -858,47 +999,161 @@ def run_pipeline_vi(
 
         for seg in segments:
             seg_path = os.path.join(seg_dir, f"seg_{seg['id']:03d}.wav")
-            if os.path.exists(seg_path) and os.path.getsize(seg_path) > 0:
-                cached = _ASeg.from_wav(seg_path)
+            cache_path = os.path.join(tts_cache_dir, f"segment_{seg['id']:04d}.wav")
+
+            if not os.path.exists(cache_path) and is_valid_audio_file(seg_path):
+                shutil.copy2(seg_path, cache_path)
+                logger.info(f"  Segment {seg['id']}: promoted legacy cache -> {cache_path}")
+
+            seg_voice_id = get_voice_id_for_segment(seg, voice_id, voice_map=voice_map)
+            speaker_label = seg.get("speaker", "")
+            gender_label = seg.get("speaker_gender", "")
+            if speaker_label:
+                mapped_by = "default fallback"
+                if voice_map and speaker_label in voice_map:
+                    mapped_by = "custom UI map"
+                elif hasattr(config, "VOICE_CHARACTER_MAP") and config.VOICE_CHARACTER_MAP and speaker_label in config.VOICE_CHARACTER_MAP:
+                    mapped_by = "config map"
+                elif speaker_label == "NARRATOR" and getattr(config, "VOICE_NARRATOR", ""):
+                    mapped_by = "narrator fallback"
+
+                logger.info(
+                    f"  Segment {seg['id']} [{speaker_label}/{gender_label}]: "
+                    f"voice_id={seg_voice_id} ({mapped_by})"
+                )
+
+            if is_valid_audio_file(cache_path):
+                shutil.copy2(cache_path, seg_path)
+                cached = _ASeg.from_wav(cache_path)
                 result = {
                     "path": seg_path,
                     "actual_duration": round(len(cached) / 1000.0, 3),
                     "speed_adjusted": False,
                     "rate_applied": "cached",
+                    "provider": getattr(config, "TTS_PROVIDER", "lucylab"),
+                    "voice_id": seg_voice_id,
+                    "job_id": None,
+                    "audio_url": None,
+                    "retry_count": 0,
+                    "status": "cached",
+                    "cache_path": cache_path,
                 }
+                tts_cached_ids.append(int(seg["id"]))
                 logger.info(
                     f"  Segment {seg['id']}: cached ({result['actual_duration']:.1f}s, "
                     f"target {seg['duration']:.1f}s)"
                 )
             else:
-                # Pick voice based on speaker gender (falls back to global voice_id)
-                seg_voice_id = get_voice_id_for_segment(seg, voice_id, voice_map=voice_map)
-                speaker_label = seg.get('speaker', '')
-                gender_label = seg.get('speaker_gender', '')
-                if speaker_label:
-                    mapped_by = "default fallback"
-                    if voice_map and speaker_label in voice_map:
-                        mapped_by = "custom UI map"
-                    elif hasattr(config, "VOICE_CHARACTER_MAP") and config.VOICE_CHARACTER_MAP and speaker_label in config.VOICE_CHARACTER_MAP:
-                        mapped_by = "config map"
-                    elif speaker_label == "NARRATOR" and getattr(config, "VOICE_NARRATOR", ""):
-                        mapped_by = "narrator fallback"
-                    
-                    logger.info(
-                        f"  Segment {seg['id']} [{speaker_label}/{gender_label}]: "
-                        f"voice_id={seg_voice_id} ({mapped_by})"
+                try:
+                    result = synthesize_segment_vi(
+                        text_vi=seg["text_vi"],
+                        output_path=cache_path,
+                        target_duration=seg["duration"],
+                        voice_id=seg_voice_id,
                     )
-                result = synthesize_segment_vi(
-                    text_vi=seg["text_vi"],
-                    output_path=seg_path,
-                    target_duration=seg["duration"],
-                    voice_id=seg_voice_id,
-                )
-                logger.info(
-                    f"  Segment {seg['id']}: {result['actual_duration']:.1f}s "
-                    f"(target: {seg['duration']:.1f}s, speed: {result['rate_applied']})"
-                )
+                    shutil.copy2(cache_path, seg_path)
+                    result["path"] = seg_path
+                    result["status"] = "generated"
+                    result["cache_path"] = cache_path
+                    if int(result.get("retry_count", 0) or 0) > 0:
+                        tts_retried_ids.append(int(seg["id"]))
+                    else:
+                        tts_new_ids.append(int(seg["id"]))
+                    logger.info(
+                        f"  Segment {seg['id']}: {result['actual_duration']:.1f}s "
+                        f"(target: {seg['duration']:.1f}s, speed: {result.get('rate_applied', '1.0x')}, "
+                        f"retries: {result.get('retry_count', 0)})"
+                    )
+                except TTSSegmentError as exc:
+                    error_message = str(exc)
+                    logger.error(f"  Segment {seg['id']} TTS failed after retries: {error_message}")
+                    failure = {
+                        "id": int(seg["id"]),
+                        "text_vi": seg.get("text_vi", ""),
+                        "voice_id": seg_voice_id,
+                        "provider": exc.provider,
+                        "job_id": exc.job_id,
+                        "audio_url": exc.audio_url,
+                        "error": error_message,
+                    }
+                    failed_tts_segments.append(failure)
+                    result = {
+                        "path": "",
+                        "actual_duration": 0.0,
+                        "speed_adjusted": False,
+                        "rate_applied": "failed",
+                        "provider": exc.provider,
+                        "voice_id": seg_voice_id,
+                        "job_id": exc.job_id,
+                        "audio_url": exc.audio_url,
+                        "retry_count": exc.attempts,
+                        "status": "failed",
+                        "cache_path": cache_path,
+                        "error": error_message,
+                    }
             tts_results.append(result)
+
+        if failed_tts_segments:
+            pending_payload = {
+                "status": "partial_failed",
+                "failed_segments": failed_tts_segments,
+            }
+            with open(pending_tts_path, "w", encoding="utf-8") as f:
+                json.dump(pending_payload, f, ensure_ascii=False, indent=2)
+
+            logger.warning(
+                "TTS incomplete: %s segment(s) failed after retries. Resume will retry only those segments.",
+                len(failed_tts_segments),
+            )
+
+            elapsed = time.time() - start_time
+            report = {
+                "status": "partial_failed",
+                "session_id": folder_name,
+                "mode": mode,
+                "no_dub_audio": no_dub_audio,
+                "subtitle_burned": burn_subtitles,
+                "cover_original_subtitles": cover_original_subtitles,
+                "subtitle_style": subtitle_style,
+                "source_url": url,
+                "source_language": lang_code,
+                "target_language": "vi-VN",
+                "voice_id": voice_id,
+                "total_segments": len(segments),
+                "total_original_duration": round(sum(s["duration"] for s in segments), 3),
+                "total_tts_duration": round(sum(float(r.get("actual_duration", 0.0) or 0.0) for r in tts_results), 3),
+                "segments_speed_adjusted": sum(1 for r in tts_results if r.get("speed_adjusted")),
+                "processing_time_seconds": round(elapsed, 1),
+                "output_dir": work_dir,
+                "published_urls": {"youtube": None, "facebook": None},
+                "tts_summary": {
+                    "cached_segment_ids": tts_cached_ids,
+                    "retried_segment_ids": tts_retried_ids,
+                    "new_segment_ids": tts_new_ids,
+                    "failed_segment_ids": [item["id"] for item in failed_tts_segments],
+                    "failed_segments": failed_tts_segments,
+                },
+                "tts_segments": tts_results,
+                "files": {
+                    "original_audio": audio_path,
+                    "transcript_original_json": os.path.join(work_dir, "transcript_original.json"),
+                    "transcript_original_srt": os.path.join(work_dir, "transcript_original.srt"),
+                    "transcript_vi_json": os.path.join(work_dir, "transcript_vi.json"),
+                    "transcript_vi_srt": os.path.join(work_dir, "transcript_vi.srt"),
+                    "transcript_vi_ass": None,
+                    "audio_vi_full": None,
+                    "dubbed_video": None,
+                    "thumbnails": [],
+                    "youtube_metadata": None,
+                    "tts_pending_segments": pending_tts_path,
+                    "tts_segment_dir": tts_cache_dir,
+                },
+            }
+            _write_report_and_timing_guide(work_dir, report, segments, tts_results)
+            return report
+
+        if os.path.exists(pending_tts_path):
+            os.remove(pending_tts_path)
     else:
         logger.info("Skipping narration synthesis in subtitle-only/no-dub-audio mode.")
         for seg in segments:
@@ -907,6 +1162,7 @@ def run_pipeline_vi(
                 "actual_duration": seg["duration"],
                 "speed_adjusted": False,
                 "rate_applied": "none",
+                "status": "skipped",
             })
 
     # --- Step 6: Slow down + Fit-to-timeline + Merge audio ---
@@ -980,6 +1236,8 @@ def run_pipeline_vi(
                         "mask_y_percent": config.SUBTITLE_MASK_Y_PERCENT,
                         "mask_height_percent": config.SUBTITLE_MASK_HEIGHT_PERCENT,
                         "mask_opacity": mask_opacity if mask_opacity is not None else config.SUBTITLE_MASK_OPACITY,
+                        "mask_extra_height_percent": config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT,
+                        "mask_extra_opacity": config.SUBTITLE_MASK_EXTRA_OPACITY,
                     }
                     render_video_with_cover(video_path, ass_path, subtitled_video_path, cover_cfg)
                 except Exception as e:
@@ -987,7 +1245,6 @@ def run_pipeline_vi(
                     from src.video_merger import burn_subtitles_to_video
                     burn_subtitles_to_video(video_path, srt_path, subtitled_video_path)
             else:
-                import shutil
                 shutil.copy2(video_path, subtitled_video_path)
                 logger.info(f"Copying original video to output: {subtitled_video_path}")
             dubbed_video_path = subtitled_video_path
@@ -1022,6 +1279,8 @@ def run_pipeline_vi(
     # --- Step 9: Publish Video ---
     youtube_url = None
     facebook_url = None
+    publish_status = {"youtube": "not_requested", "facebook": "not_requested"}
+    publish_error = {}
     if dubbed_video_path and os.path.exists(dubbed_video_path):
         meta_data = content_result.get("metadata", {})
         title = meta_data.get("title", "Dubbed Video")
@@ -1031,18 +1290,27 @@ def run_pipeline_vi(
         if publish_youtube:
             logger.info("=" * 60)
             logger.info("STEP 9a: Publishing to YouTube")
-            from src.publisher import publish_to_youtube
-            youtube_url = publish_to_youtube(dubbed_video_path, title, description, tags)
+            from src.publisher import publish_to_youtube_detailed
+            youtube_result = publish_to_youtube_detailed(dubbed_video_path, title, description, tags)
+            youtube_url = youtube_result.get("url")
+            publish_status["youtube"] = "success" if youtube_result.get("success") else "failed"
+            if youtube_result.get("error"):
+                publish_error["youtube"] = youtube_result["error"]
 
         if publish_facebook:
             logger.info("=" * 60)
             logger.info("STEP 9b: Publishing to Facebook")
-            from src.publisher import publish_to_facebook
-            facebook_url = publish_to_facebook(dubbed_video_path, title, description)
+            from src.publisher import publish_to_facebook_detailed
+            facebook_result = publish_to_facebook_detailed(dubbed_video_path, title, description)
+            facebook_url = facebook_result.get("url")
+            publish_status["facebook"] = "success" if facebook_result.get("success") else "failed"
+            if facebook_result.get("error"):
+                publish_error["facebook"] = facebook_result["error"]
 
     # --- Generate report ---
     elapsed = time.time() - start_time
     report = {
+        "status": "success",
         "session_id": folder_name,
         "mode": mode,
         "no_dub_audio": no_dub_audio,
@@ -1055,14 +1323,24 @@ def run_pipeline_vi(
         "voice_id": voice_id,
         "total_segments": len(segments),
         "total_original_duration": round(sum(s["duration"] for s in segments), 3),
-        "total_tts_duration": round(sum(r["actual_duration"] for r in tts_results), 3),
-        "segments_speed_adjusted": sum(1 for r in tts_results if r["speed_adjusted"]),
+        "total_tts_duration": round(sum(float(r.get("actual_duration", 0.0) or 0.0) for r in tts_results), 3),
+        "segments_speed_adjusted": sum(1 for r in tts_results if r.get("speed_adjusted")),
         "processing_time_seconds": round(elapsed, 1),
         "output_dir": work_dir,
         "published_urls": {
             "youtube": youtube_url,
             "facebook": facebook_url,
         },
+        "publish_status": publish_status,
+        "publish_error": publish_error,
+        "tts_summary": {
+            "cached_segment_ids": tts_cached_ids,
+            "retried_segment_ids": tts_retried_ids,
+            "new_segment_ids": tts_new_ids,
+            "failed_segment_ids": [item["id"] for item in failed_tts_segments],
+            "failed_segments": failed_tts_segments,
+        },
+        "tts_segments": tts_results,
         "files": {
             "original_audio": audio_path,
             "transcript_original_json": os.path.join(work_dir, "transcript_original.json"),
@@ -1074,19 +1352,11 @@ def run_pipeline_vi(
             "dubbed_video": dubbed_video_path,
             "thumbnails": content_result.get("thumbnails", []),
             "youtube_metadata": content_result.get("metadata_file"),
+            "tts_pending_segments": pending_tts_path if os.path.exists(pending_tts_path) else None,
+            "tts_segment_dir": tts_cache_dir if os.path.isdir(tts_cache_dir) else None,
         },
     }
-
-    report_path = os.path.join(work_dir, "report.json")
-    with open(report_path, "w", encoding="utf-8") as f:
-        json.dump(report, f, ensure_ascii=False, indent=2)
-
-    # --- Generate timing guide ---
-    timing_guide = _build_timing_guide(report, segments, tts_results)
-    timing_path = os.path.join(work_dir, "timing_guide.json")
-    with open(timing_path, "w", encoding="utf-8") as f:
-        json.dump(timing_guide, f, ensure_ascii=False, indent=2)
-    logger.info(f"Timing guide: {timing_path}")
+    _write_report_and_timing_guide(work_dir, report, segments, tts_results)
 
     logger.info("=" * 60)
     logger.info("PIPELINE COMPLETE (Vietnamese)")
@@ -1108,6 +1378,25 @@ def run_pipeline_vi(
 def main():
     args = parse_args()
     try:
+        if args.publish_only:
+            from src.publish_existing import publish_existing_session
+
+            result = publish_existing_session(args.resume, args.publish_only)
+            if result.get("success"):
+                logger.info(
+                    "Publish-only complete: platform=%s url=%s",
+                    args.publish_only,
+                    result.get("url"),
+                )
+            else:
+                logger.error(
+                    "Publish-only failed: platform=%s error=%s",
+                    args.publish_only,
+                    result.get("error"),
+                )
+                sys.exit(1)
+            return
+
         run_pipeline_vi(
             url=args.url,
             file_path=args.file,
@@ -1128,6 +1417,7 @@ def main():
             subtitle_font_size=args.subtitle_font_size,
             mask_opacity=args.mask_opacity,
             no_dub_audio=args.no_dub_audio,
+            from_step=args.from_step,
         )
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)

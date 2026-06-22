@@ -1,6 +1,11 @@
-"""Character Profiler — Generates character_bible.json from transcript and video context using Gemini/Groq."""
+"""Character Profiler — Generates character_bible.json for translation consistency."""
+
+from __future__ import annotations
+
+from copy import deepcopy
 import json
 import os
+
 from src.utils import setup_logging
 
 logger = setup_logging("character_profiler")
@@ -15,23 +20,60 @@ DEFAULT_BIBLE = {
             "personality": "natural",
             "vi_pronoun_self": "mình",
             "vi_pronoun_other": "mọi người",
-            "voice_id": None
+            "voice_id": None,
         }
     ],
     "global_pronoun_rules": {
         "我们": "mình / chúng mình",
         "你": "bạn / mọi người",
         "他": "người đó / anh ấy tùy ngữ cảnh",
-        "她": "người đó / cô ấy tùy ngữ cảnh"
-    }
+        "她": "người đó / cô ấy tùy ngữ cảnh",
+    },
 }
+
+
+def sanitize_character_bible(bible: dict | None) -> dict:
+    if not isinstance(bible, dict):
+        return deepcopy(DEFAULT_BIBLE)
+
+    sanitized = deepcopy(bible)
+    default_character = DEFAULT_BIBLE["characters"][0]
+
+    characters = []
+    for raw_character in sanitized.get("characters", []):
+        if not isinstance(raw_character, dict):
+            continue
+        character = {**deepcopy(default_character), **raw_character}
+        character["vi_pronoun_self"] = str(character.get("vi_pronoun_self") or "mình").strip()
+        character["vi_pronoun_other"] = str(character.get("vi_pronoun_other") or "bạn").strip()
+        characters.append(character)
+
+    if not characters:
+        characters = deepcopy(DEFAULT_BIBLE["characters"])
+
+    rules = dict(DEFAULT_BIBLE["global_pronoun_rules"])
+    raw_rules = sanitized.get("global_pronoun_rules", {})
+    if isinstance(raw_rules, dict):
+        for source_pronoun, target_pronoun in raw_rules.items():
+            target_text = str(target_pronoun or "").strip()
+            if target_text:
+                rules[str(source_pronoun)] = target_text
+
+    sanitized["characters"] = characters
+    sanitized["global_pronoun_rules"] = rules
+    return sanitized
+
+
+def _save_character_bible(output_path: str, bible: dict) -> None:
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(bible, handle, ensure_ascii=False, indent=2)
 
 
 def build_profiler_prompt(segments: list[dict], video_context: dict) -> str:
     sample = segments[:120]
-    transcript_text = "\n".join([f"[{s['id']}] {s.get('text', '')}" for s in sample])
+    transcript_text = "\n".join(f"[{s['id']}] {s.get('text', '')}" for s in sample)
 
-    prompt = f"""You are building a character profile ("character bible") for a video to ensure consistent pronoun usage in Vietnamese translation.
+    return f"""You are building a character profile ("character bible") for a video to ensure consistent pronoun usage in Vietnamese translation.
 Context of the video:
 Type: {video_context.get('video_type', 'unknown')}
 Topic: {video_context.get('topic', 'unknown')}
@@ -78,41 +120,41 @@ Expected JSON schema:
 Transcript lines:
 {transcript_text}
 """
-    return prompt
+
+
 def build_character_bible(segments: list[dict], video_context: dict, output_path: str) -> dict:
     """Build and save character_bible.json."""
     if os.path.exists(output_path):
         try:
-            with open(output_path, "r", encoding="utf-8") as f:
-                bible = json.load(f)
-                logger.info(f"Loaded existing character bible from {output_path}")
-                return bible
-        except Exception as e:
-            logger.warning(f"Failed to read existing character bible: {e}")
+            with open(output_path, "r", encoding="utf-8") as handle:
+                bible = sanitize_character_bible(json.load(handle))
+            logger.info("Loaded existing character bible from %s", output_path)
+            _save_character_bible(output_path, bible)
+            return bible
+        except Exception as exc:
+            logger.warning("Failed to read existing character bible: %s", exc)
 
     logger.info("Generating new character bible...")
     prompt = build_profiler_prompt(segments, video_context)
 
     from src.ai import ai_router
+
     try:
         bible = ai_router.generate_character_bible(prompt)
-    except Exception as e:
-        logger.error(f"Router failed to generate character bible: {e}")
+    except Exception as exc:
+        logger.error("Router failed to generate character bible: %s", exc)
         bible = None
 
     if not bible:
         logger.warning("Failed to generate character bible via LLMs, using default fallback.")
-        bible = DEFAULT_BIBLE.copy()
+        bible = deepcopy(DEFAULT_BIBLE)
 
-    # Verify and merge defaults if empty
-    if "characters" not in bible or not isinstance(bible["characters"], list) or not bible["characters"]:
-        bible = DEFAULT_BIBLE.copy()
+    bible = sanitize_character_bible(bible)
 
     try:
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(bible, f, ensure_ascii=False, indent=2)
-        logger.info(f"Saved character bible to {output_path}")
-    except Exception as e:
-        logger.error(f"Failed to save character bible: {e}")
+        _save_character_bible(output_path, bible)
+        logger.info("Saved character bible to %s", output_path)
+    except Exception as exc:
+        logger.error("Failed to save character bible: %s", exc)
 
     return bible

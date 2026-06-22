@@ -10,6 +10,7 @@ over the original subtitle region before the Vietnamese ASS subtitles are compos
 import os
 import subprocess
 import config
+from src.subtitle_formatter import split_timed_subtitle_chunks
 from src.utils import setup_logging
 
 logger = setup_logging("subtitle_renderer")
@@ -55,6 +56,41 @@ def _wrap_text(text: str, max_chars_per_line: int = 24) -> str:
 
     # Keep at most 2 lines, join with ASS newline
     return "\\N".join(lines[:2])
+
+
+def _build_cover_filters(cover_config: dict | None = None) -> list[str]:
+    cfg = cover_config or {}
+    if not cfg.get("cover_original_subtitles", False):
+        return []
+
+    mask_y = cfg.get("mask_y_percent", config.SUBTITLE_MASK_Y_PERCENT)
+    mask_h = cfg.get("mask_height_percent", config.SUBTITLE_MASK_HEIGHT_PERCENT)
+    mask_opacity = cfg.get("mask_opacity", config.SUBTITLE_MASK_OPACITY)
+    extra_h = cfg.get("mask_extra_height_percent", config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT)
+    extra_opacity = cfg.get("mask_extra_opacity", config.SUBTITLE_MASK_EXTRA_OPACITY)
+
+    filters = [
+        (
+            f"drawbox=x=0:y=ih*{mask_y}:w=iw:h=ih*{mask_h}"
+            f":color=black@{mask_opacity}:t=fill"
+        )
+    ]
+    if extra_h > 0:
+        extra_y = max(mask_y - extra_h, 0.0)
+        filters.append(
+            (
+                f"drawbox=x=0:y=ih*{extra_y}:w=iw:h=ih*{extra_h}"
+                f":color=black@{extra_opacity}:t=fill"
+            )
+        )
+    return filters
+
+
+def _build_video_filter_chain(ass_path: str, cover_config: dict | None = None) -> str:
+    ass_escaped = _escape_ffmpeg_path(os.path.abspath(ass_path))
+    filters = _build_cover_filters(cover_config)
+    filters.append(f"ass='{ass_escaped}'")
+    return ",".join(filters)
 
 
 def _format_ass_time(seconds: float) -> str:
@@ -163,14 +199,20 @@ def generate_ass_subtitles(
         if not text:
             continue
 
-        start = _format_ass_time(seg.get("start", 0.0))
-        end = _format_ass_time(seg.get("end", 0.0))
-        wrapped = _wrap_text(text, max_chars)
-
-        lines.append(
-            f"Dialogue: 0,{start},{end},VietSub,,0,0,0,,{wrapped}"
+        timed_chunks = split_timed_subtitle_chunks(
+            seg.get("start", 0.0),
+            seg.get("end", 0.0),
+            text,
+            max_chars_per_line=max_chars,
+            max_lines_per_chunk=2,
         )
-        dialogue_count += 1
+
+        for chunk_start, chunk_end, chunk_text in timed_chunks:
+            start = _format_ass_time(chunk_start)
+            end = _format_ass_time(chunk_end)
+            wrapped = _wrap_text(chunk_text, max_chars)
+            lines.append(f"Dialogue: 0,{start},{end},VietSub,,0,0,0,,{wrapped}")
+            dialogue_count += 1
 
     # Write file
     content = "\n".join(lines) + "\n"
@@ -221,31 +263,16 @@ def render_video_with_cover(
         raise FileNotFoundError(f"ASS subtitles not found: {ass_path}")
 
     cfg = cover_config or {}
-    cover_enabled = cfg.get("cover_original_subtitles", False)
-    mask_y = cfg.get("mask_y_percent", config.SUBTITLE_MASK_Y_PERCENT)
-    mask_h = cfg.get("mask_height_percent", config.SUBTITLE_MASK_HEIGHT_PERCENT)
-    mask_opacity = cfg.get("mask_opacity", config.SUBTITLE_MASK_OPACITY)
-
-    # Build FFmpeg video filter chain
-    ass_escaped = _escape_ffmpeg_path(os.path.abspath(ass_path))
-    filters = []
-
-    if cover_enabled:
-        # Draw a dark rectangle to cover the original subtitle region
-        drawbox = (
-            f"drawbox=x=0:y=ih*{mask_y}:w=iw:h=ih*{mask_h}"
-            f":color=black@{mask_opacity}:t=fill"
-        )
-        filters.append(drawbox)
+    vf_string = _build_video_filter_chain(ass_path, cfg)
+    if cfg.get("cover_original_subtitles", False):
         logger.info(
-            f"Applying subtitle cover box: y={mask_y*100:.0f}%, "
-            f"h={mask_h*100:.0f}%, opacity={mask_opacity}"
+            "Applying subtitle cover: y=%.0f%% h=%.0f%% opacity=%.2f extra_h=%.0f%% extra_opacity=%.2f",
+            cfg.get("mask_y_percent", config.SUBTITLE_MASK_Y_PERCENT) * 100,
+            cfg.get("mask_height_percent", config.SUBTITLE_MASK_HEIGHT_PERCENT) * 100,
+            cfg.get("mask_opacity", config.SUBTITLE_MASK_OPACITY),
+            cfg.get("mask_extra_height_percent", config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT) * 100,
+            cfg.get("mask_extra_opacity", config.SUBTITLE_MASK_EXTRA_OPACITY),
         )
-
-    # ASS subtitle filter
-    filters.append(f"ass='{ass_escaped}'")
-
-    vf_string = ",".join(filters)
 
     cmd = [
         "ffmpeg",

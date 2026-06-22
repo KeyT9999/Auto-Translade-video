@@ -1,51 +1,119 @@
-"""Timeline-aware Rewrite — Reworks Vietnamese dubbing text to match target segment durations (shortens or expands naturally)."""
+"""Timeline-aware rewrite that only shortens Vietnamese dubbing safely."""
+
+from __future__ import annotations
+
 import json
-import os
 import re
-import requests
-import config
+import unicodedata
+
 from src.utils import setup_logging
 
 logger = setup_logging("timeline_rewriter")
+
+TRANSLATION_FIELDS = ("dub_vi", "final_dub_vi", "text_vi", "subtitle_vi")
+BANNED_EXPANSION_PATTERNS = (
+    "mọi người",
+    "các bạn",
+    "thấy không",
+    "đừng lo",
+    "đừng lo lắng",
+    "thật sự là",
+    "thực sự là",
+)
+CLAUSE_SPLIT_RE = re.compile(r"[,.!?;:…]+")
+CJK_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\u3400-\u4dbf]")
+
+
+def _normalize_spaces(text: str) -> str:
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _fold_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value or "")
+    stripped = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return stripped.replace("đ", "d").replace("Đ", "D").casefold()
+
+
+def _count_clauses(text: str) -> int:
+    chunks = [part.strip() for part in CLAUSE_SPLIT_RE.split(_normalize_spaces(text)) if part.strip()]
+    return max(len(chunks), 1) if _normalize_spaces(text) else 0
+
+
+def _base_dub_text(segment: dict) -> str:
+    original = _normalize_spaces(str(segment.get("original_dub_vi", "")))
+    if segment.get("timing_rewrite_applied") and original:
+        return original
+    for field in ("dub_vi", "final_dub_vi", "text_vi", "subtitle_vi", "literal_vi"):
+        value = _normalize_spaces(str(segment.get(field, "")))
+        if value:
+            return value
+    return ""
+
+
+def _contains_banned_expansion(text: str) -> str | None:
+    folded = _fold_text(text)
+    return next((pattern for pattern in BANNED_EXPANSION_PATTERNS if pattern in folded), None)
+
+
+def _validate_rewrite(original_text: str, rewritten_text: str) -> tuple[bool, str]:
+    original = _normalize_spaces(original_text)
+    rewritten = _normalize_spaces(rewritten_text)
+
+    if not rewritten:
+        return False, "empty rewrite"
+    if CJK_RE.search(rewritten):
+        return False, "contains CJK characters"
+    if len(rewritten) > len(original):
+        return False, "rewrite is longer than original"
+    if _count_clauses(rewritten) > _count_clauses(original):
+        return False, "rewrite adds more clauses than original"
+
+    banned_pattern = _contains_banned_expansion(rewritten)
+    if banned_pattern:
+        return False, f"rewrite contains banned expansion pattern '{banned_pattern}'"
+
+    return True, "accepted"
 
 
 def build_rewrite_prompt(
     video_context: dict,
     character_bible: dict,
-    segments_to_rewrite: list[dict]
+    segments_to_rewrite: list[dict],
 ) -> str:
     prompt_items = []
-    for s in segments_to_rewrite:
-        char_rate = len(s["dub_vi"]) / s["duration"] if s["duration"] > 0 else 0
-        direction = "SHORTEN (câu thoại quá dài so với duration, hãy viết lại cực kỳ ngắn gọn)" if char_rate > 15.0 else "EXPAND (câu thoại quá ngắn so với duration, hãy thêm từ đệm tự nhiên như 'đó', 'nhé', 'nha' để lấp đầy thời gian nói mà không bịa thêm nội dung)"
-        prompt_items.append({
-            "id": s["id"],
-            "source_text": s["text"],
-            "dub_vi": s["dub_vi"],
-            "duration": s["duration"],
-            "direction": direction,
-            "char_rate_chars_per_sec": round(char_rate, 1)
-        })
+    for segment in segments_to_rewrite:
+        base_dub = _base_dub_text(segment)
+        char_rate = len(base_dub) / segment["duration"] if segment["duration"] > 0 else 0
+        prompt_items.append(
+            {
+                "id": segment["id"],
+                "source_text": segment["text"],
+                "dub_vi": base_dub,
+                "duration": segment["duration"],
+                "char_rate_chars_per_sec": round(char_rate, 1),
+            }
+        )
 
-    prompt = f"""Bạn là một chuyên gia lồng tiếng video. Nhiệm vụ của bạn là viết lại các câu thoại lồng tiếng tiếng Việt (dub_vi) dưới đây sao cho thời lượng nói vừa khớp với thời gian (duration) của phân cảnh.
+    return f"""Bạn là chuyên gia chỉnh câu thoại lồng tiếng tiếng Việt để khớp thời lượng.
 
-Quy tắc:
-1. Nếu direction là SHORTEN: Hãy viết lại câu thoại thật ngắn gọn, súc tích nhưng giữ nguyên ý nghĩa chính.
-2. Nếu direction là EXPAND: Hãy kéo dài câu thoại bằng cách thêm các từ đệm, trợ từ nói tự nhiên trong tiếng Việt (như "đó", "nhỉ", "nhé", "nha", "đấy", "thế",...) hoặc cách nói kéo dài từ ngữ để lấp đầy thời gian cảnh mà không thêm thông tin sai lệch hay bịa chuyện.
-3. TUYỆT ĐỐI KHÔNG để sót ký tự ngôn ngữ gốc CJK (tiếng Trung/Nhật/Hàn).
-4. Không thay đổi id.
-5. Giữ nguyên đại từ xưng hô tương ứng theo CHARACTER_BIBLE.
+Nhiệm vụ:
+- Chỉ RÚT GỌN câu dub_vi nếu cần để đọc vừa duration.
+- Không được thêm ý mới.
+- Không được thêm lời kêu gọi khán giả như "mọi người", "các bạn", "thấy không".
+- Không được thêm các đuôi kéo dài kiểu "thật sự là như vậy đó", "đừng lo lắng nhé".
+- Không được làm câu dài hơn bản gốc.
+- Không được tăng số mệnh đề/câu so với bản gốc.
+- Nếu không rút gọn an toàn được thì giữ nguyên bản gốc.
+- Giữ nguyên xưng hô theo CHARACTER_BIBLE.
+- Không để sót ký tự CJK.
 
 STRICT OUTPUT FORMAT:
-Bạn bắt buộc phải phản hồi bằng 1 JSON object duy nhất có key "rewritten_segments" chứa mảng các phân đoạn đã được tối ưu timeline.
-Không viết thêm lời giải thích hay bọc trong markdown code fence.
-
-Expected JSON output format:
+Trả về duy nhất 1 JSON object:
 {{
   "rewritten_segments": [
     {{
-      "id": 18,
-      "final_dub_vi": "câu thoại mới đã được tối ưu hóa timeline hoàn hảo"
+      "id": 1,
+      "final_dub_vi": "câu rút gọn an toàn"
     }}
   ]
 }}
@@ -59,83 +127,107 @@ CHARACTER_BIBLE:
 SEGMENTS_TO_REWRITE:
 {json.dumps(prompt_items, ensure_ascii=False, indent=2)}
 """
-    return prompt
+
+
 def rewrite_timeline(
     segments: list[dict],
     video_context: dict,
-    character_bible: dict
+    character_bible: dict,
 ) -> list[dict]:
-    """Identify segments that need adjustment, call AI to rewrite them, and return updated list."""
+    """Safely shorten only the genuinely too-long segments."""
+    if not segments:
+        return segments
+
+    prepared_segments = []
     to_rewrite = []
-    for s in segments:
-        dub_vi = s.get("dub_vi", "")
-        duration = s.get("duration", 0.0)
-        if not dub_vi or duration <= 0:
+
+    for segment in segments:
+        base_dub = _base_dub_text(segment)
+        prepared = {**segment, "original_dub_vi": base_dub}
+        prepared_segments.append(prepared)
+
+        duration = float(segment.get("duration", 0.0) or 0.0)
+        if not base_dub or duration <= 0:
             continue
-        
-        char_rate = len(dub_vi) / duration
-        # Too long: > 15 chars/sec
-        # Too short: < 6 chars/sec and duration > 4 seconds
-        if char_rate > 15.0 or (char_rate < 6.0 and duration > 4.0):
-            to_rewrite.append(s)
+
+        char_rate = len(base_dub) / duration
+        if char_rate > 15.0:
+            to_rewrite.append(prepared)
 
     if not to_rewrite:
         logger.info("No segments need timing adjustment.")
-        for s in segments:
-            s["timing_rewrite_applied"] = False
-            s["original_dub_vi"] = s.get("dub_vi", "")
-            s["final_dub_vi"] = s.get("dub_vi", "")
-        return segments
+        return [
+            {
+                **segment,
+                "timing_rewrite_applied": False,
+                "original_dub_vi": segment.get("original_dub_vi", ""),
+                **{field: segment.get("original_dub_vi", "") for field in TRANSLATION_FIELDS},
+            }
+            if segment.get("original_dub_vi")
+            else {
+                **segment,
+                "timing_rewrite_applied": False,
+                "original_dub_vi": _base_dub_text(segment),
+                **{field: _base_dub_text(segment) for field in TRANSLATION_FIELDS},
+            }
+            for segment in prepared_segments
+        ]
 
-    logger.info(f"Found {len(to_rewrite)} segments requiring timeline rewrite.")
+    logger.info("Found %s segments requiring timeline rewrite.", len(to_rewrite))
     prompt = build_rewrite_prompt(video_context, character_bible, to_rewrite)
 
     from src.ai import ai_router
+
     try:
         res_dict = ai_router.rewrite_timeline(prompt)
         rewritten_results = res_dict.get("rewritten_segments") if isinstance(res_dict, dict) else None
-    except Exception as e:
-        logger.error(f"Router timeline rewrite failed: {e}")
+    except Exception as exc:
+        logger.error("Router timeline rewrite failed: %s", exc)
         rewritten_results = None
 
     if not rewritten_results:
         logger.warning("Timeline rewrite AI failed. Proceeding with original translations.")
-        for s in segments:
-            s["timing_rewrite_applied"] = False
-            s["original_dub_vi"] = s.get("dub_vi", "")
-            s["final_dub_vi"] = s.get("dub_vi", "")
-        return segments
+        rewritten_results = []
 
-    rewritten_map = {item["id"]: item.get("final_dub_vi", "") for item in rewritten_results}
+    rewritten_map = {
+        item["id"]: _normalize_spaces(str(item.get("final_dub_vi", "")))
+        for item in rewritten_results
+        if isinstance(item, dict) and item.get("id") is not None
+    }
+
     updated_segments = []
+    for segment in prepared_segments:
+        seg_id = segment["id"]
+        original_dub = segment.get("original_dub_vi", "")
+        candidate = rewritten_map.get(seg_id, "")
 
-    for s in segments:
-        seg_id = s["id"]
-        original_dub = s.get("dub_vi", "")
-        if seg_id in rewritten_map and rewritten_map[seg_id]:
-            final_dub = rewritten_map[seg_id]
-            # Ensure not empty
-            cleaned_text = re.sub(r"[^\w\s\d,.\-!?]", "", final_dub).strip()
-            if not cleaned_text:
-                final_dub = original_dub
-            
-            logger.info(f"  Timeline rewritten segment {seg_id}: '{original_dub}' -> '{final_dub}'")
-            updated_segments.append({
-                **s,
-                "timing_rewrite_applied": True,
-                "original_dub_vi": original_dub,
-                "dub_vi": final_dub,
-                "final_dub_vi": final_dub,
-                "text_vi": final_dub,  # Alias for backward compatibility
-                "subtitle_vi": final_dub
-            })
-        else:
-            updated_segments.append({
-                **s,
+        if candidate:
+            accepted, reason = _validate_rewrite(original_dub, candidate)
+            if accepted:
+                logger.info("  Timeline rewritten segment %s: '%s' -> '%s'", seg_id, original_dub, candidate)
+                updated_segments.append(
+                    {
+                        **segment,
+                        "timing_rewrite_applied": True,
+                        **{field: candidate for field in TRANSLATION_FIELDS},
+                    }
+                )
+                continue
+
+            logger.warning(
+                "  Rejected timeline rewrite for segment %s (%s): '%s' -> '%s'",
+                seg_id,
+                reason,
+                original_dub,
+                candidate,
+            )
+
+        updated_segments.append(
+            {
+                **segment,
                 "timing_rewrite_applied": False,
-                "original_dub_vi": original_dub,
-                "final_dub_vi": s.get("final_dub_vi", original_dub),
-                "subtitle_vi": s.get("subtitle_vi", original_dub)
-            })
+                **{field: original_dub for field in TRANSLATION_FIELDS},
+            }
+        )
 
     return updated_segments

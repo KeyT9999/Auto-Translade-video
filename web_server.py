@@ -124,6 +124,10 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
                 tasks[task_id]["status"] = "speaker_pending"
                 tasks[task_id]["progress_step"] = "STEP 4.5: Speaker Pending"
                 tasks[task_id]["result"] = report
+            elif isinstance(report, dict) and report.get("status") == "partial_failed":
+                tasks[task_id]["status"] = "partial_failed"
+                tasks[task_id]["progress_step"] = "STEP 5: TTS Pending"
+                tasks[task_id]["result"] = report
             else:
                 tasks[task_id]["status"] = "success"
                 tasks[task_id]["progress_step"] = "Completed"

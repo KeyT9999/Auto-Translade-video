@@ -38,6 +38,29 @@ META_HALLUCINATION_PATTERNS = (
     "subtitle note",
 )
 
+VI_NUMBER_WORDS = {
+    "khong",
+    "mot",
+    "hai",
+    "ba",
+    "bon",
+    "tu",
+    "nam",
+    "lam",
+    "sau",
+    "bay",
+    "tam",
+    "chin",
+    "muoi",
+    "tram",
+    "nghin",
+    "ngan",
+    "trieu",
+    "ty",
+    "linh",
+    "le",
+}
+
 WARNING_ONLY_ISSUE_TYPES = {
     "AWKWARD_TRANSLATION",
     "FRAGMENTED_SUBTITLE",
@@ -78,6 +101,24 @@ def _resolve_target_text(segment: dict, mode: str) -> str:
         if value is not None and str(value).strip():
             return str(value)
     return ""
+
+
+def _is_numeric_or_serial_source(value: str) -> bool:
+    compact = re.sub(r"\s+", "", value or "")
+    if len(compact) < 4:
+        return False
+
+    digit_count = sum(ch.isdigit() for ch in compact)
+    allowed_count = sum(ch.isdigit() or ch in "+-().,/:_" for ch in compact)
+    return digit_count >= max(4, len(compact) // 2) and allowed_count == len(compact)
+
+
+def _is_spoken_number_target(value: str) -> bool:
+    folded = _fold_text(value)
+    tokens = [token for token in re.split(r"[\s,.;:!?-]+", folded) if token]
+    if len(tokens) < 2:
+        return False
+    return all(token.isdigit() or token in VI_NUMBER_WORDS for token in tokens)
 
 
 def _make_issue(
@@ -153,6 +194,9 @@ def _looks_like_true_hallucination(
     ratio = target_len / source_len
     target_fold = _fold_text(target_text)
     is_zh_source = _is_zh_source(source_text, source_language)
+
+    if _is_numeric_or_serial_source(source_text) and _is_spoken_number_target(target_text):
+        return False
 
     if any(pattern in target_fold for pattern in META_HALLUCINATION_PATTERNS):
         return True

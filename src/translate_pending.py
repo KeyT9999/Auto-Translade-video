@@ -10,7 +10,13 @@ continue.
 import os
 
 
-def write_hint(work_dir: str, target_lang: str, source_lang: str, mode: str = "dub_audio") -> str:
+def write_hint(
+    work_dir: str,
+    target_lang: str,
+    source_lang: str,
+    mode: str = "dub_audio",
+    failed_ranges: list[str] | None = None,
+) -> str:
     """Create ``<work_dir>/TRANSLATE_PENDING.txt`` and return its path."""
     is_vi = target_lang == "vi-VN"
     target_name = "Vietnamese" if is_vi else "Japanese"
@@ -56,6 +62,21 @@ DURATION-AWARE LENGTH (CRITICAL):
 """
         next_steps = "continue with TTS, audio fitting, video merge, and metadata generation."
 
+    failed_ranges_text = ""
+    if failed_ranges:
+        failed_lines = "\n".join(f"- {item}" for item in failed_ranges)
+        failed_ranges_text = f"""
+FAILED / MISSING WINDOW RANGES
+------------------------------
+The pipeline already kept successful windows on disk. Only these ranges still
+need attention:
+{failed_lines}
+
+After fixing or rerunning, resume with:
+
+    python {resume_script} --resume "{work_dir}" --from-step translate --file <original_video.mp4>
+"""
+
     hint_path = os.path.join(work_dir, "TRANSLATE_PENDING.txt")
     with open(hint_path, "w", encoding="utf-8") as f:
         f.write(
@@ -68,6 +89,7 @@ Work directory  : {work_dir}
 
 The pipeline stopped at Step 4 because {out_file} does not exist yet.
 Pick ONE of the two paths below to create that file, then resume.
+{failed_ranges_text}
 
 
 ==============================================================
@@ -98,7 +120,7 @@ PATH B — No API key, no Claude Code (ChatGPT / Gemini web UI)
    transcript_original.json). Make sure encoding is UTF-8.
 6. Resume:
 
-    python {resume_script} --resume "{work_dir}" --file <original_video.mp4>
+    python {resume_script} --resume "{work_dir}" --from-step translate --file <original_video.mp4>
 
 ----- PROMPT TO COPY -----
 You are translating an ASR transcript for a YouTube video from {source_lang}
@@ -129,7 +151,7 @@ the fences before saving. Verify the saved file with:
 
     python -c "import json; d=json.load(open(r'{work_dir}/{out_file}', encoding='utf-8')); print('segments:', len(d)); print('first {out_field}:', d[0].get('{out_field}'))"
 
-The pipeline will detect {out_file} on resume, skip Step 4, and {next_steps}
+The pipeline will detect {out_file} on resume, skip completed earlier steps, and {next_steps}
 """
         )
     return hint_path

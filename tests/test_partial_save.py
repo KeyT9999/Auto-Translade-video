@@ -9,6 +9,7 @@ def test_partial_save_and_resume(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "TRANSLATION_CONTEXT_BEFORE", 1)
     monkeypatch.setattr(config, "TRANSLATION_CONTEXT_AFTER", 1)
     monkeypatch.setattr(config, "TRANSLATION_PARTIAL_SAVE_ENABLED", True)
+    monkeypatch.setattr(config, "TRANSLATION_CACHE_ENABLED", False)
 
     work_dir = str(tmp_path)
     windows_dir = os.path.join(work_dir, "translation_windows")
