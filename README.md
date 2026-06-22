@@ -1,4 +1,5 @@
 # 🎬 Auto-Translade-video
+python web_server.py
 
 Hệ thống tự động lồng tiếng video chuyên nghiệp (hỗ trợ các nền tảng YouTube, TikTok, Douyin hoặc file cục bộ local) sang **tiếng Việt** hoặc **tiếng Nhật**. Hệ thống hoạt động hoàn chỉnh từ khâu tải video, tách âm nền/nhạc nền gốc bằng AI, nhận dạng giọng nói (ASR), dịch thuật tối ưu hóa ngữ cảnh và xưng hô, nhận diện nhân vật (Speaker Detection), tổng hợp giọng nói tự nhiên (TTS), căn chỉnh khớp timeline, sinh siêu dữ liệu (Metadata) SEO kèm ảnh đại diện (Thumbnail), và cuối cùng là tự động xuất bản (Publish) lên YouTube và Facebook Page.
 
