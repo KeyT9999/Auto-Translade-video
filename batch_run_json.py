@@ -40,6 +40,8 @@ def _save_list(data: list[dict], path: str):
 
 
 def main():
+    from src.ai import ai_router
+    ai_router.reset_failures()
     parser = argparse.ArgumentParser(description="Batch Vietnamese Dubbing from JSON list")
     parser.add_argument(
         "--json",

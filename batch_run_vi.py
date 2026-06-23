@@ -22,6 +22,8 @@ DEFAULT_EXCEL = "output/video_link.xlsx"
 
 
 def main():
+    from src.ai import ai_router
+    ai_router.reset_failures()
     parser = argparse.ArgumentParser(description="Batch Vietnamese Video Dubbing: process URLs from Excel")
     parser.add_argument(
         "--excel",
@@ -86,7 +88,9 @@ def main():
     fail_count = 0
 
     for i, row_idx in enumerate(pending_rows):
-        url = ws.cell(row=row_idx, column=1).value
+        raw_url = ws.cell(row=row_idx, column=1).value
+        from src.utils import extract_url
+        url = extract_url(raw_url)
         logger.info(f"[{i + 1}/{len(pending_rows)}] Processing: {url}")
 
         try:

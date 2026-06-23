@@ -104,6 +104,13 @@ def _get_bool_env(key: str, default: bool) -> bool:
         return default
     return val.strip().lower() in ("true", "1", "yes", "on")
 
+
+def _get_int_env(key: str, default: int) -> int:
+    val = os.getenv(key)
+    if val is None or val.strip() == "":
+        return default
+    return int(val.strip())
+
 GEMINI_ENABLED = _get_bool_env("GEMINI_ENABLED", False)
 
 # Groq ASR
@@ -130,6 +137,20 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").stri
 OPENAI_REPAIR_MODEL = os.getenv("OPENAI_REPAIR_MODEL", "gpt-4o-mini").strip()
 OPENAI_TIMEOUT_MS = int(os.getenv("OPENAI_TIMEOUT_MS", "60000"))
 OPENAI_MAX_RETRIES = int(os.getenv("OPENAI_MAX_RETRIES", "5"))
+
+# EvoMap AI (OpenAI-compatible, priority over OpenAI)
+EVOMAP_API_KEY = os.getenv("EVOMAP_API_KEY", "").strip()
+EVOMAP_BASE_URL = os.getenv("EVOMAP_BASE_URL", "https://api.evomap.ai/v1").strip()
+EVOMAP_MODEL = os.getenv("EVOMAP_MODEL", "evomap-gemini-3.1-pro-preview").strip()
+EVOMAP_TIMEOUT_MS = int(os.getenv("EVOMAP_TIMEOUT_MS", "60000"))
+EVOMAP_MAX_RETRIES = int(os.getenv("EVOMAP_MAX_RETRIES", "3"))
+
+# BluesMinds AI (OpenAI-compatible, multi-model gateway)
+BLUESMINDS_API_KEY = os.getenv("BLUESMINDS_API_KEY", "").strip()
+BLUESMINDS_BASE_URL = os.getenv("BLUESMINDS_BASE_URL", "https://api.bluesminds.com").strip()
+BLUESMINDS_MODEL = os.getenv("BLUESMINDS_MODEL", "DeepSeek-V4-Flash").strip()
+BLUESMINDS_TIMEOUT_MS = int(os.getenv("BLUESMINDS_TIMEOUT_MS", "60000"))
+BLUESMINDS_MAX_RETRIES = int(os.getenv("BLUESMINDS_MAX_RETRIES", "3"))
 
 # Translation Pipeline Controls
 TRANSLATION_ADAPTIVE_WINDOW_ENABLED = _get_bool_env("TRANSLATION_ADAPTIVE_WINDOW_ENABLED", True)
@@ -169,6 +190,10 @@ def validate_api_keys():
         raise ValueError("TRANSLATION_PROVIDER is set to 'openai' but OPENAI_API_KEY is not set.")
     elif TRANSLATION_PROVIDER == "gemini" and GEMINI_ENABLED and not GOOGLE_API_KEY:
         raise ValueError("TRANSLATION_PROVIDER is set to 'gemini' but GOOGLE_API_KEY is not set.")
+    elif TRANSLATION_PROVIDER == "evomap" and not EVOMAP_API_KEY:
+        raise ValueError("TRANSLATION_PROVIDER is set to 'evomap' but EVOMAP_API_KEY is not set.")
+    elif TRANSLATION_PROVIDER == "bluesminds" and not BLUESMINDS_API_KEY:
+        raise ValueError("TRANSLATION_PROVIDER is set to 'bluesminds' but BLUESMINDS_API_KEY is not set.")
     
     # QA Repair Provider
     if QA_REPAIR_PROVIDER == "openai" and not OPENAI_API_KEY:
@@ -177,6 +202,10 @@ def validate_api_keys():
         raise ValueError("QA_REPAIR_PROVIDER is set to 'deepseek' but DEEPSEEK_API_KEY is not set.")
     elif QA_REPAIR_PROVIDER == "gemini" and GEMINI_ENABLED and not GOOGLE_API_KEY:
         raise ValueError("QA_REPAIR_PROVIDER is set to 'gemini' but GOOGLE_API_KEY is not set.")
+    elif QA_REPAIR_PROVIDER == "evomap" and not EVOMAP_API_KEY:
+        raise ValueError("QA_REPAIR_PROVIDER is set to 'evomap' but EVOMAP_API_KEY is not set.")
+    elif QA_REPAIR_PROVIDER == "bluesminds" and not BLUESMINDS_API_KEY:
+        raise ValueError("QA_REPAIR_PROVIDER is set to 'bluesminds' but BLUESMINDS_API_KEY is not set.")
 
 # ── Subtitle Cover & ASS Renderer Config ──
 SUBTITLE_MASK_Y_PERCENT = float(os.getenv("SUBTITLE_MASK_Y_PERCENT", "0.80"))
@@ -191,4 +220,24 @@ SUBTITLE_SHADOW_SIZE = int(os.getenv("SUBTITLE_SHADOW_SIZE", "1"))
 SUBTITLE_BOX_OPACITY = float(os.getenv("SUBTITLE_BOX_OPACITY", "0.6"))
 SUBTITLE_MARGIN_BOTTOM = int(os.getenv("SUBTITLE_MARGIN_BOTTOM", "60"))
 SUBTITLE_MAX_CHARS_PER_LINE = int(os.getenv("SUBTITLE_MAX_CHARS_PER_LINE", "24"))
+
+# Batch Queue Config
+BATCH_MAX_LINKS = max(1, _get_int_env("BATCH_MAX_LINKS", 50))
+_batch_process_concurrency = _get_int_env("BATCH_PROCESS_CONCURRENCY", 1)
+if _batch_process_concurrency != 1:
+    print(
+        f"WARNING: BATCH_PROCESS_CONCURRENCY={_batch_process_concurrency} is not supported yet. Forcing 1.",
+        file=sys.stderr,
+    )
+BATCH_PROCESS_CONCURRENCY = 1
+BATCH_CONTINUE_ON_ERROR = _get_bool_env("BATCH_CONTINUE_ON_ERROR", True)
+BATCH_STOP_ON_ERROR = _get_bool_env("BATCH_STOP_ON_ERROR", False)
+BATCH_RETRY_FAILED_ENABLED = _get_bool_env("BATCH_RETRY_FAILED_ENABLED", True)
+BATCH_RETRY_MAX_ATTEMPTS = max(1, _get_int_env("BATCH_RETRY_MAX_ATTEMPTS", 2))
+BATCH_DELAY_BETWEEN_VIDEOS_SECONDS = max(0, _get_int_env("BATCH_DELAY_BETWEEN_VIDEOS_SECONDS", 10))
+BATCH_SKIP_DUPLICATE_LINKS = _get_bool_env("BATCH_SKIP_DUPLICATE_LINKS", True)
+BATCH_OUTPUT_DIR = os.getenv("BATCH_OUTPUT_DIR", "./output/batches").strip() or "./output/batches"
+BATCH_WRITE_MARKDOWN_REPORT = _get_bool_env("BATCH_WRITE_MARKDOWN_REPORT", True)
+BATCH_WRITE_JSON_REPORT = _get_bool_env("BATCH_WRITE_JSON_REPORT", True)
+BATCH_AUTO_PUBLISH_ENABLED = _get_bool_env("BATCH_AUTO_PUBLISH_ENABLED", False)
 

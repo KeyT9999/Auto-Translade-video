@@ -209,6 +209,10 @@ def run_pipeline(
     bg_mode: str = "demucs",
     bg_duck_db: float = -12.0,
 ) -> dict:
+    if url:
+        from src.utils import extract_url
+        url = extract_url(url)
+
     start_time = time.time()
 
     lang_code = LANG_MAP.get(source_lang, source_lang)
@@ -403,6 +407,8 @@ def run_pipeline(
 
 def main():
     args = parse_args()
+    from src.ai import ai_router
+    ai_router.reset_failures()
     try:
         run_pipeline(
             url=args.url,

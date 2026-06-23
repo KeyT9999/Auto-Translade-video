@@ -10,12 +10,29 @@ class AIRouter:
         self._providers = {}
         self._asr_providers = {}
         self._initialized = False
+        self._failed_providers = set()
+
+    def reset_failures(self):
+        self._failed_providers.clear()
+        logger.info("Cleared temporarily disabled providers list.")
 
     def _init_providers(self):
         if self._initialized:
             return
         
         # Dynamically import to avoid circular dependencies and allow incremental implementations
+        try:
+            from src.ai.bluesminds_provider import BluesMindsProvider
+            self._providers["bluesminds"] = BluesMindsProvider()
+        except ImportError:
+            pass
+
+        try:
+            from src.ai.evomap_provider import EvoMapProvider
+            self._providers["evomap"] = EvoMapProvider()
+        except ImportError:
+            pass
+
         try:
             from src.ai.openai_provider import OpenAIProvider
             self._providers["openai"] = OpenAIProvider()
@@ -61,6 +78,10 @@ class AIRouter:
                                **kwargs) -> Any:
         """Executes a method on primary provider, falling back to other providers in sequence if it fails."""
         providers_to_try = [primary_name] + fallback_names
+        
+        # Filter out failed providers from this run
+        providers_to_try = [p for p in providers_to_try if p.lower() not in self._failed_providers]
+        
         last_error = None
 
         for provider_name in providers_to_try:
@@ -89,6 +110,8 @@ class AIRouter:
                 return method(*args, **kwargs)
             except Exception as e:
                 logger.warning(f"Provider '{provider_name}' failed for stage '{stage}' via method '{method_name}': {e}")
+                logger.info(f"Temporarily disabling failed provider '{provider_name}' for future calls in this session.")
+                self._failed_providers.add(provider_name.lower())
                 last_error = e
 
         if last_error:

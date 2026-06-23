@@ -1,5 +1,6 @@
 import os
 import uuid
+import json
 import logging
 import threading
 from fastapi import FastAPI, BackgroundTasks, HTTPException
@@ -8,9 +9,16 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 import config
 from pipeline_vi import run_pipeline_vi
+from src.batch_runner import (
+    BatchRunner,
+    build_batch_report,
+    create_batch_state_from_links,
+    load_batch_state,
+    parse_links_text,
+)
 
 # Setup FastAPI App
-app = FastAPI(title="Auto-Translade-video AI UI")
+app = FastAPI(title="Auto-Translate-video AI UI")
 
 # Ensure output and static directories exist
 os.makedirs("output", exist_ok=True)
@@ -41,7 +49,7 @@ class TaskLogHandler(logging.Handler):
             self.handleError(record)
 
 
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 class PipelineRequest(BaseModel):
     url: Optional[str] = None
@@ -63,8 +71,61 @@ class PipelineRequest(BaseModel):
     mask_opacity: Optional[float] = None
 
 
+class BatchPipelineRequest(BaseModel):
+    links_text: str
+    source_lang: str = "en-US"
+    voice: str = "female"
+    bg_mode: str = "demucs"
+    bg_duck_db: float = -12.0
+    publish_youtube: bool = False
+    publish_facebook: bool = False
+    burn_subtitles: bool = False
+    mode: Optional[str] = "subtitle_only"
+    cover_original_subtitles: bool = False
+    subtitle_style: str = "plain"
+    subtitle_font_size: Optional[int] = None
+    mask_opacity: Optional[float] = None
+
+
+def _build_batch_extra_options(req: BatchPipelineRequest) -> dict[str, Any]:
+    return {
+        "voice": req.voice,
+        "skip_video": False,
+        "bg_mode": req.bg_mode,
+        "bg_duck_db": req.bg_duck_db,
+        "burn_subtitles": req.burn_subtitles,
+        "cover_original_subtitles": req.cover_original_subtitles,
+        "subtitle_style": req.subtitle_style,
+        "subtitle_font_size": req.subtitle_font_size,
+        "mask_opacity": req.mask_opacity,
+        "no_dub_audio": False,
+    }
+
+
+def _serialize_batch_snapshot(batch_dir: str) -> Optional[dict[str, Any]]:
+    try:
+        batch = load_batch_state(batch_dir)
+    except Exception:
+        return None
+
+    report = build_batch_report(batch).to_dict()
+    return {
+        "kind": "batch",
+        "batch_id": batch.batch_id,
+        "batch_dir": batch.batch_dir,
+        "links_file": batch.links_file,
+        "report_json": os.path.join(batch.batch_dir, "batch_report.json"),
+        "report_md": os.path.join(batch.batch_dir, "batch_report.md"),
+        "mode": batch.mode,
+        "jobs": report["jobs"],
+        "summary": report,
+    }
+
+
 def execute_pipeline(task_id: str, req: PipelineRequest):
     global tasks
+    from src.ai import ai_router
+    ai_router.reset_failures()
     
     # Setup thread-specific logging capture
     log_list = []
@@ -74,11 +135,13 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
     
     with tasks_lock:
         tasks[task_id] = {
+            "task_kind": "single",
             "status": "running",
             "progress_step": "STEP 1: Initializing",
             "logs": log_list,
             "result": None,
-            "error": None
+            "error": None,
+            "batch_dir": None,
         }
 
     try:
@@ -143,13 +206,97 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
         root_logger.removeHandler(handler)
 
 
+def execute_batch_pipeline(task_id: str, req: BatchPipelineRequest):
+    global tasks
+    from src.ai import ai_router
+    ai_router.reset_failures()
+
+    log_list = []
+    handler = TaskLogHandler(log_list)
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+
+    with tasks_lock:
+        tasks[task_id] = {
+            "task_kind": "batch",
+            "status": "running",
+            "progress_step": "STEP 1: Initializing batch",
+            "logs": log_list,
+            "result": None,
+            "error": None,
+            "batch_dir": None,
+        }
+
+    try:
+        links = parse_links_text(req.links_text)
+        publish_platforms = []
+        if req.publish_youtube:
+            publish_platforms.append("youtube")
+        if req.publish_facebook:
+            publish_platforms.append("facebook")
+
+        batch = create_batch_state_from_links(
+            links,
+            mode=req.mode or "subtitle_only",
+            source_lang=req.source_lang,
+            output_root=os.path.join(config.OUTPUT_DIR, "VN"),
+            publish_platforms=publish_platforms,
+            extra_options=_build_batch_extra_options(req),
+        )
+
+        with tasks_lock:
+            tasks[task_id]["batch_dir"] = batch.batch_dir
+
+        runner = BatchRunner()
+        batch = runner.run(batch)
+        result = _serialize_batch_snapshot(batch.batch_dir)
+        summary = result["summary"] if result else None
+
+        with tasks_lock:
+            tasks[task_id]["status"] = (
+                "partial_failed"
+                if summary and (summary.get("failed") or summary.get("publish_failed"))
+                else "success"
+            )
+            tasks[task_id]["progress_step"] = "Completed"
+            tasks[task_id]["result"] = result
+
+    except Exception as e:
+        root_logger.error(f"Batch task {task_id} failed: {e}", exc_info=True)
+        with tasks_lock:
+            tasks[task_id]["status"] = "failed"
+            tasks[task_id]["progress_step"] = "Failed"
+            tasks[task_id]["error"] = str(e)
+    finally:
+        root_logger.removeHandler(handler)
+
+
 @app.post("/api/run")
 def run_pipeline(req: PipelineRequest, background_tasks: BackgroundTasks):
     if not req.url and not req.file_path and not req.resume_dir:
         raise HTTPException(status_code=400, detail="Either video URL, local file path, or resume directory is required")
+    
+    if req.url:
+        from src.utils import extract_url
+        req.url = extract_url(req.url)
         
     task_id = str(uuid.uuid4())
     background_tasks.add_task(execute_pipeline, task_id, req)
+    return {"task_id": task_id}
+
+
+@app.post("/api/batch/run")
+def run_batch_pipeline(req: BatchPipelineRequest, background_tasks: BackgroundTasks):
+    if not req.links_text or not req.links_text.strip():
+        raise HTTPException(status_code=400, detail="Batch mode requires 1-50 video links.")
+
+    try:
+        parse_links_text(req.links_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    task_id = str(uuid.uuid4())
+    background_tasks.add_task(execute_batch_pipeline, task_id, req)
     return {"task_id": task_id}
 
 
@@ -160,6 +307,10 @@ def get_status(task_id: str):
         
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    batch_snapshot = None
+    if task.get("task_kind") == "batch" and task.get("batch_dir"):
+        batch_snapshot = _serialize_batch_snapshot(task["batch_dir"])
 
     # Figure out current step from logs
     current_step = task["progress_step"]
@@ -173,9 +324,11 @@ def get_status(task_id: str):
 
     return {
         "task_id": task_id,
+        "task_kind": task.get("task_kind", "single"),
         "status": task["status"],
         "progress_step": current_step,
         "result": task["result"],
+        "batch": batch_snapshot,
         "error": task["error"],
         "logs": task["logs"]
     }

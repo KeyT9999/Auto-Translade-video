@@ -53,3 +53,21 @@ def test_run_pipeline_with_url_success(monkeypatch):
     })
     assert response.status_code == 200
     assert "task_id" in response.json()
+
+
+def test_run_batch_pipeline_missing_links():
+    response = client.post("/api/batch/run", json={"links_text": "   "})
+    assert response.status_code == 400
+    assert "Batch mode requires 1-50 video links." in response.json()["detail"]
+
+
+def test_run_batch_pipeline_success(monkeypatch):
+    monkeypatch.setattr("web_server.execute_batch_pipeline", lambda task_id, req: None)
+
+    response = client.post("/api/batch/run", json={
+        "links_text": "https://www.douyin.com/video/1\nhttps://www.tiktok.com/@demo/video/2",
+        "source_lang": "en-US",
+        "mode": "subtitle_only",
+    })
+    assert response.status_code == 200
+    assert "task_id" in response.json()

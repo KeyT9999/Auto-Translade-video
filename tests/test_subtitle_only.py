@@ -231,7 +231,7 @@ def test_subtitle_only_resume_rebuilds_srt_without_speaker_detection(tmp_path, m
 
     import src.subtitle_renderer
 
-    def mock_generate_ass(segments, output_path, style_config):
+    def mock_generate_ass(segments, output_path, style_config, **kwargs):
         with open(output_path, "w", encoding="utf-8-sig") as f:
             f.write("[Script Info]\n")
         return output_path

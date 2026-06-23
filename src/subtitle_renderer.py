@@ -9,6 +9,7 @@ over the original subtitle region before the Vietnamese ASS subtitles are compos
 """
 import os
 import subprocess
+import json
 import config
 from src.subtitle_formatter import split_timed_subtitle_chunks
 from src.utils import setup_logging
@@ -17,6 +18,33 @@ logger = setup_logging("subtitle_renderer")
 
 # Field priority for resolving Vietnamese subtitle text
 SUBTITLE_TEXT_FIELDS = ["subtitle_vi", "final_dub_vi", "dub_vi", "text_vi", "literal_vi"]
+
+
+def get_video_resolution(video_path: str) -> tuple[int, int]:
+    """Get video resolution (width, height) using ffprobe.
+    
+    Falls back to (1080, 1920) if detection fails.
+    """
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "json",
+            video_path
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            data = json.loads(res.stdout)
+            streams = data.get("streams", [])
+            if streams:
+                w = int(streams[0].get("width", 1080))
+                h = int(streams[0].get("height", 1920))
+                return w, h
+    except Exception as e:
+        logger.warning(f"Failed to detect video resolution via ffprobe: {e}")
+    return 1080, 1920
 
 
 def _resolve_subtitle_text(segment: dict) -> str:
@@ -110,6 +138,7 @@ def generate_ass_subtitles(
     segments: list[dict],
     output_path: str,
     style_config: dict | None = None,
+    video_path: str | None = None,
 ) -> str:
     """Generate an ASS subtitle file from translated segments.
 
@@ -122,6 +151,7 @@ def generate_ass_subtitles(
             - box_opacity (0.0-1.0, for boxed style)
             - margin_bottom (pixels)
             - max_chars_per_line (int)
+        video_path: Optional path to probe video resolution.
 
     Returns:
         Path to the generated .ass file.
@@ -137,6 +167,11 @@ def generate_ass_subtitles(
     max_chars = cfg.get("max_chars_per_line", config.SUBTITLE_MAX_CHARS_PER_LINE)
 
     logger.info(f"Generating ASS subtitles (style={style}, segments={len(segments)})")
+
+    play_res_x, play_res_y = 1080, 1920
+    if video_path and os.path.exists(video_path):
+        play_res_x, play_res_y = get_video_resolution(video_path)
+        logger.info(f"Dynamic video resolution for ASS: {play_res_x}x{play_res_y}")
 
     # ASS colour format: &HAABBGGRR (alpha, blue, green, red)
     primary_colour = "&H00FFFFFF"       # White, fully opaque
@@ -160,8 +195,8 @@ def generate_ass_subtitles(
     lines.append("\ufeff[Script Info]")  # UTF-8 BOM
     lines.append("ScriptType: v4.00+")
     lines.append("Collisions: Normal")
-    lines.append("PlayResX: 1080")
-    lines.append("PlayResY: 1920")
+    lines.append(f"PlayResX: {play_res_x}")
+    lines.append(f"PlayResY: {play_res_y}")
     lines.append("Timer: 100.0000")
     lines.append("WrapStyle: 0")
     lines.append("")

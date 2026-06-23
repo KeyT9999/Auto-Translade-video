@@ -48,3 +48,20 @@ def test_config_defaults(monkeypatch):
     assert config.AUDIO_SAMPLE_RATE == 16000
     assert config.OUTPUT_DIR == "./output"
     assert config.VIDEO_URL == ""
+
+
+def test_batch_config_clamps_concurrency(monkeypatch, capsys):
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **kw: None)
+    monkeypatch.setenv("AZURE_SPEECH_KEY", "test-key")
+    monkeypatch.setenv("AZURE_SPEECH_REGION", "japaneast")
+    monkeypatch.setenv("BATCH_PROCESS_CONCURRENCY", "4")
+
+    import importlib
+    import config
+
+    importlib.reload(config)
+    captured = capsys.readouterr()
+
+    assert config.BATCH_PROCESS_CONCURRENCY == 1
+    assert "Forcing 1" in captured.err
+    assert config.BATCH_MAX_LINKS == 50

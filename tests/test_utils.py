@@ -35,3 +35,24 @@ def test_format_timestamp_minutes():
 
 def test_format_timestamp_hours():
     assert format_timestamp(3661.123) == "01:01:01,123"
+
+
+def test_extract_url():
+    from src.utils import extract_url
+    
+    # 1. Clean URL
+    assert extract_url("https://v.douyin.com/RhbRuqdworA/") == "https://v.douyin.com/RhbRuqdworA/"
+    
+    # 2. Mixed text with URL
+    raw_msg = "7.64 10/29 :1pm O@x.SY kCH:/ 紫藤花开，思念的人会如期归来。 #超能演剧场2026 https://v.douyin.com/RhbRuqdworA/ 复制此链接，打开Dou音"
+    assert extract_url(raw_msg) == "https://v.douyin.com/RhbRuqdworA/"
+    
+    # 3. URL with trailing punctuation commonly captured
+    assert extract_url("Check this: https://v.douyin.com/RhbRuqdworA/!!!") == "https://v.douyin.com/RhbRuqdworA/"
+    assert extract_url("https://v.douyin.com/RhbRuqdworA/, yes") == "https://v.douyin.com/RhbRuqdworA/"
+    assert extract_url("Link: (https://v.douyin.com/RhbRuqdworA/)") == "https://v.douyin.com/RhbRuqdworA/"
+    assert extract_url("Link: [https://v.douyin.com/RhbRuqdworA/]\"") == "https://v.douyin.com/RhbRuqdworA/"
+    
+    # 4. No URL fallback
+    assert extract_url("no url here") == "no url here"
+    assert extract_url("") == ""

@@ -13,7 +13,9 @@ import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from pydub import AudioSegment as _ASeg
 
 import config
@@ -42,6 +44,250 @@ LANG_MAP = {
     "zh-HK": "zh-HK",
     "zh-TW": "zh-TW",
 }
+
+
+@dataclass
+class PipelineResult:
+    success: bool
+    output_dir: str | None
+    rendered_video: str | None
+    report_path: str | None
+    published_urls: dict[str, str | None]
+    error_step: str | None
+    error_type: str | None
+    error_message: str | None
+
+
+def _normalize_publish_platforms(platforms: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    for platform in platforms or []:
+        value = str(platform).strip().lower()
+        if value and value not in normalized:
+            normalized.append(value)
+    return normalized
+
+
+def _resolve_batch_voice_id(mode: str, extra_options: dict[str, Any]) -> str:
+    no_dub_audio = bool(extra_options.get("no_dub_audio"))
+    if mode == "subtitle_only" or no_dub_audio:
+        return ""
+
+    explicit_voice_id = str(extra_options.get("voice_id") or "").strip()
+    if explicit_voice_id:
+        return explicit_voice_id
+
+    voice = str(extra_options.get("voice") or "").strip().lower()
+    if voice == "male":
+        return config.VIETNAMESE_VOICEID_MALE
+    if voice == "female":
+        return config.VIETNAMESE_VOICEID_FEMALE
+    if config.VOICE_TYPE == "male":
+        return config.VIETNAMESE_VOICEID_MALE
+    if config.VOICE_TYPE == "female":
+        return config.VIETNAMESE_VOICEID_FEMALE
+    if config.VOICE_NARRATOR:
+        return config.VOICE_NARRATOR
+
+    raise ValueError(
+        "Batch dub_audio mode requires --voice, voice_id, VOICE_TYPE, or VOICE_NARRATOR."
+    )
+
+
+def _snapshot_output_sessions(output_root: str) -> set[str]:
+    abs_root = os.path.abspath(output_root)
+    if not os.path.isdir(abs_root):
+        return set()
+    return {
+        name
+        for name in os.listdir(abs_root)
+        if os.path.isdir(os.path.join(abs_root, name))
+    }
+
+
+def _detect_new_output_dir(output_root: str, before_snapshot: set[str]) -> str | None:
+    abs_root = os.path.abspath(output_root)
+    if not os.path.isdir(abs_root):
+        return None
+
+    new_dirs = [
+        os.path.join(abs_root, name)
+        for name in os.listdir(abs_root)
+        if os.path.isdir(os.path.join(abs_root, name)) and name not in before_snapshot
+    ]
+    if not new_dirs:
+        return None
+    new_dirs.sort(key=lambda path: os.path.getmtime(path), reverse=True)
+    return new_dirs[0]
+
+
+def _extract_rendered_video_from_report(report: dict | None) -> str | None:
+    if not isinstance(report, dict):
+        return None
+
+    files = report.get("files", {})
+    if isinstance(files, dict):
+        for key in ("dubbed_video", "subtitled_video"):
+            value = files.get(key)
+            if value and os.path.exists(value):
+                return value
+
+    output_dir = report.get("output_dir")
+    if isinstance(output_dir, str) and output_dir:
+        return _extract_rendered_video_from_output_dir(output_dir)
+    return None
+
+
+def _extract_rendered_video_from_output_dir(output_dir: str | None) -> str | None:
+    if not output_dir:
+        return None
+
+    candidates = [
+        os.path.join(output_dir, "subtitled_video.mp4"),
+        os.path.join(output_dir, "dubbed_video.mp4"),
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _classify_pipeline_exception(exc: Exception) -> tuple[str | None, str]:
+    message = str(exc).strip()
+    lowered = message.lower()
+
+    if "facebook" in lowered and any(token in lowered for token in ("oauth", "token", "190", "463")):
+        return "publish", "FACEBOOK_TOKEN_EXPIRED"
+    if "youtube" in lowered and any(token in lowered for token in ("oauth", "auth", "credential")):
+        return "publish", "YOUTUBE_AUTH_FAILED"
+    if any(token in lowered for token in ("download", "yt-dlp", "douyin")):
+        return "download", "DOWNLOAD_FAILED"
+    if any(token in lowered for token in ("transcrib", "asr", "speech")):
+        return "asr", "ASR_FAILED"
+    if any(token in lowered for token in ("translation", "translate", "deepseek")):
+        return "translation", "TRANSLATION_FAILED"
+    if any(token in lowered for token in ("validation", "validator", "repair")):
+        return "validation", "VALIDATION_FAILED"
+    if any(token in lowered for token in ("metadata", "thumbnail", "content generation")):
+        return "metadata", "METADATA_FAILED"
+    if any(token in lowered for token in ("render", "subtitle", "ffmpeg", "merge video")):
+        return "render", "RENDER_FAILED"
+    if "publish" in lowered:
+        return "publish", "PUBLISH_FAILED"
+    return None, "UNKNOWN_ERROR"
+
+
+def _update_report_batch_metadata(
+    report_path: str | None,
+    batch_id: str | None,
+    job_index: int | None,
+    source_url: str,
+) -> None:
+    if not report_path or not os.path.exists(report_path):
+        return
+    if batch_id is None and job_index is None:
+        return
+
+    try:
+        with open(report_path, "r", encoding="utf-8") as handle:
+            report = json.load(handle)
+        report["batch"] = {
+            "batch_id": batch_id,
+            "job_index": job_index,
+            "source_url": source_url,
+        }
+        temp_path = f"{report_path}.tmp"
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, ensure_ascii=False, indent=2)
+        os.replace(temp_path, report_path)
+    except Exception as exc:
+        logger.warning("Could not update report with batch metadata: %s", exc)
+
+
+def run_single_video_pipeline(
+    source_url: str,
+    mode: str,
+    target_language: str = "vi-VN",
+    publish_platforms: list[str] | None = None,
+    output_root: str = "./output/VN",
+    batch_id: str | None = None,
+    job_index: int | None = None,
+    extra_options: dict[str, Any] | None = None,
+) -> PipelineResult:
+    if target_language != "vi-VN":
+        raise ValueError("Only target_language='vi-VN' is supported by the current pipeline.")
+
+    extra_options = dict(extra_options or {})
+    publish_platforms = _normalize_publish_platforms(publish_platforms)
+    output_root = os.path.abspath(output_root)
+    ensure_dir(output_root)
+
+    before_snapshot = _snapshot_output_sessions(output_root)
+    resume_dir = extra_options.get("resume_dir")
+    if isinstance(resume_dir, str) and resume_dir:
+        resume_dir = os.path.abspath(resume_dir)
+    else:
+        resume_dir = None
+
+    source_lang = str(extra_options.get("source_lang") or config.DEFAULT_SOURCE_LANG)
+    voice_id = _resolve_batch_voice_id(mode, extra_options)
+
+    try:
+        report = run_pipeline_vi(
+            url=source_url,
+            file_path=extra_options.get("file_path"),
+            source_lang=source_lang,
+            voice_id=voice_id,
+            skip_video=bool(extra_options.get("skip_video", False)),
+            output_dir=output_root,
+            resume_dir=resume_dir,
+            bg_mode=str(extra_options.get("bg_mode") or "demucs"),
+            bg_duck_db=float(extra_options.get("bg_duck_db", -12.0)),
+            publish_youtube="youtube" in publish_platforms,
+            publish_facebook="facebook" in publish_platforms,
+            pause_for_speakers=bool(extra_options.get("pause_for_speakers", False)),
+            speaker_map=extra_options.get("speaker_map"),
+            burn_subtitles=bool(extra_options.get("burn_subtitles", False)),
+            mode=mode,
+            cover_original_subtitles=bool(extra_options.get("cover_original_subtitles", False)),
+            subtitle_style=str(extra_options.get("subtitle_style") or "plain"),
+            subtitle_font_size=extra_options.get("subtitle_font_size"),
+            mask_opacity=extra_options.get("mask_opacity"),
+            no_dub_audio=bool(extra_options.get("no_dub_audio", False)),
+            from_step=extra_options.get("from_step"),
+        )
+        report_path = (
+            os.path.join(report["output_dir"], "report.json")
+            if report.get("output_dir")
+            else None
+        )
+        rendered_video = _extract_rendered_video_from_report(report)
+        _update_report_batch_metadata(report_path, batch_id, job_index, source_url)
+        return PipelineResult(
+            success=True,
+            output_dir=report.get("output_dir"),
+            rendered_video=rendered_video,
+            report_path=report_path,
+            published_urls=report.get("published_urls", {"youtube": None, "facebook": None}),
+            error_step=None,
+            error_type=None,
+            error_message=None,
+        )
+    except Exception as exc:
+        output_dir = resume_dir or _detect_new_output_dir(output_root, before_snapshot)
+        report_path = os.path.join(output_dir, "report.json") if output_dir else None
+        rendered_video = _extract_rendered_video_from_output_dir(output_dir)
+        error_step, error_type = _classify_pipeline_exception(exc)
+        _update_report_batch_metadata(report_path, batch_id, job_index, source_url)
+        return PipelineResult(
+            success=False,
+            output_dir=output_dir,
+            rendered_video=rendered_video,
+            report_path=report_path,
+            published_urls={"youtube": None, "facebook": None},
+            error_step=error_step,
+            error_type=error_type,
+            error_message=str(exc),
+        )
 
 
 def _build_timing_guide(report: dict, segments: list[dict], tts_results: list[dict]) -> dict:
@@ -522,6 +768,10 @@ def run_pipeline_vi(
     no_dub_audio: bool = False,
     from_step: str | None = None,
 ) -> dict:
+    if url:
+        from src.utils import extract_url
+        url = extract_url(url)
+
     start_time = time.time()
 
     lang_code = LANG_MAP.get(source_lang, source_lang)
@@ -1230,7 +1480,7 @@ def run_pipeline_vi(
                     "max_chars_per_line": config.SUBTITLE_MAX_CHARS_PER_LINE,
                 }
                 try:
-                    generate_ass_subtitles(segments, ass_path, ass_style_config)
+                    generate_ass_subtitles(segments, ass_path, ass_style_config, video_path=video_path)
                     cover_cfg = {
                         "cover_original_subtitles": cover_original_subtitles,
                         "mask_y_percent": config.SUBTITLE_MASK_Y_PERCENT,
@@ -1251,8 +1501,38 @@ def run_pipeline_vi(
         else:
             logger.info("STEP 7: Creating dubbed video")
             dubbed_video_path = os.path.join(work_dir, "dubbed_video.mp4")
-            srt_path = os.path.join(work_dir, "transcript_vi.srt") if burn_subtitles else None
-            merge_video(video_path, merged_audio_path, dubbed_video_path, srt_path=srt_path)
+            sub_path = None
+            cover_cfg = None
+            if burn_subtitles:
+                # Generate ASS subtitles for premium rendering & styling
+                from src.subtitle_renderer import generate_ass_subtitles
+                ass_path = os.path.join(work_dir, "transcript_vi.ass")
+                ass_style_config = {
+                    "style": subtitle_style,
+                    "font_name": config.SUBTITLE_FONT_NAME,
+                    "font_size": subtitle_font_size if subtitle_font_size is not None else config.SUBTITLE_FONT_SIZE,
+                    "outline_size": config.SUBTITLE_OUTLINE_SIZE,
+                    "shadow_size": config.SUBTITLE_SHADOW_SIZE,
+                    "box_opacity": config.SUBTITLE_BOX_OPACITY,
+                    "margin_bottom": config.SUBTITLE_MARGIN_BOTTOM,
+                    "max_chars_per_line": config.SUBTITLE_MAX_CHARS_PER_LINE,
+                }
+                try:
+                    generate_ass_subtitles(segments, ass_path, ass_style_config, video_path=video_path)
+                    sub_path = ass_path
+                    cover_cfg = {
+                        "cover_original_subtitles": cover_original_subtitles,
+                        "mask_y_percent": config.SUBTITLE_MASK_Y_PERCENT,
+                        "mask_height_percent": config.SUBTITLE_MASK_HEIGHT_PERCENT,
+                        "mask_opacity": mask_opacity if mask_opacity is not None else config.SUBTITLE_MASK_OPACITY,
+                        "mask_extra_height_percent": config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT,
+                        "mask_extra_opacity": config.SUBTITLE_MASK_EXTRA_OPACITY,
+                    }
+                except Exception as e:
+                    logger.warning(f"ASS generation failed ({e}), falling back to SRT...")
+                    sub_path = os.path.join(work_dir, "transcript_vi.srt")
+            
+            merge_video(video_path, merged_audio_path, dubbed_video_path, srt_path=sub_path, cover_config=cover_cfg)
 
     # --- Step 8: Generate thumbnails + YouTube metadata ---
     content_result = {"thumbnails": [], "metadata": {}}
@@ -1377,6 +1657,8 @@ def run_pipeline_vi(
 
 def main():
     args = parse_args()
+    from src.ai import ai_router
+    ai_router.reset_failures()
     try:
         if args.publish_only:
             from src.publish_existing import publish_existing_session

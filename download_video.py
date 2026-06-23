@@ -88,6 +88,9 @@ def download_one(
     Playwright-based extractor because yt-dlp's Douyin path is broken upstream.
     All other sites continue through yt-dlp.
     """
+    from src.utils import extract_url
+    url = extract_url(url)
+
     if is_douyin_url(url):
         logger.info(f"Routing to Playwright Douyin extractor: {url}")
         return download_douyin(url, output_dir)

@@ -5,20 +5,35 @@ from src.utils import setup_logging
 logger = setup_logging("video_merger")
 
 
-def merge_video(video_path: str, audio_path: str, output_path: str, srt_path: str | None = None) -> str:
+def merge_video(
+    video_path: str,
+    audio_path: str,
+    output_path: str,
+    srt_path: str | None = None,
+    cover_config: dict | None = None,
+) -> str:
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Video not found: {video_path}")
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"Audio not found: {audio_path}")
 
     if srt_path and os.path.exists(srt_path):
-        # Convert path to relative and use forward slashes for FFmpeg subtitles filter on Windows
-        srt_rel = os.path.relpath(srt_path).replace("\\", "/")
+        from src.subtitle_renderer import _build_video_filter_chain, _escape_ffmpeg_path, _build_cover_filters
+        
+        # Build filter chain depending on whether it is .ass or .srt
+        if srt_path.lower().endswith(".ass"):
+            vf_string = _build_video_filter_chain(srt_path, cover_config)
+        else:
+            srt_escaped = _escape_ffmpeg_path(os.path.abspath(srt_path))
+            filters = _build_cover_filters(cover_config)
+            filters.append(f"subtitles='{srt_escaped}'")
+            vf_string = ",".join(filters)
+
         cmd = [
             "ffmpeg",
             "-i", video_path,
             "-i", audio_path,
-            "-vf", f"subtitles={srt_rel}",
+            "-vf", vf_string,
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-crf", "22",
@@ -29,7 +44,7 @@ def merge_video(video_path: str, audio_path: str, output_path: str, srt_path: st
             "-y",
             output_path,
         ]
-        logger.info(f"Merging video + audio + burning subtitles ({srt_rel}) → {output_path}")
+        logger.info(f"Merging video + audio + burning subtitles/cover ({srt_path}) → {output_path}")
     else:
         cmd = [
             "ffmpeg",

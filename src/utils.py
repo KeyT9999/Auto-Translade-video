@@ -19,6 +19,22 @@ def ensure_dir(path: str) -> str:
     return path
 
 
+def extract_url(text: str) -> str:
+    """Extracts the first HTTP/HTTPS URL from a string.
+    
+    If no URL is found, returns the stripped original text.
+    """
+    if not text:
+        return ""
+    import re
+    match = re.search(r'(https?://[^\s]+)', text)
+    if match:
+        url = match.group(1).strip()
+        url = re.sub(r'[.,;:!?"\'()\[\]{}“”‘’]+$', '', url)
+        return url
+    return text.strip()
+
+
 def format_timestamp(seconds: float) -> str:
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auto-Translade Video AI</title>
+    <title>Auto-Translate Video AI</title>
     <meta name="description" content="Hệ thống tự động lồng tiếng Việt và xuất bản video tối ưu SEO">
     <!-- Typography: VT323 (display), JetBrains Mono (telemetry), Inter (body) -->
     <link href="https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400&family=Inter:wght@400&display=swap" rel="stylesheet">
@@ -268,6 +268,38 @@
 
         .input-text::placeholder {
             color: #6c6c66; /* Lightened placeholder for visibility */
+        }
+
+        .textarea-input {
+            min-height: 188px;
+            resize: vertical;
+            background: var(--url-input-bg);
+        }
+
+        .helper-text {
+            font-family: var(--font-body);
+            font-size: 13px;
+            color: var(--color-bone-glow);
+            opacity: 0.7;
+            line-height: 1.45;
+        }
+
+        .source-mode-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--spacing-16);
+            flex-wrap: wrap;
+        }
+
+        .batch-counter {
+            font-family: var(--font-telemetry);
+            font-size: 12px;
+            color: var(--color-bone-glow);
+            opacity: 0.85;
+            padding: 6px 10px;
+            border: 1px solid var(--color-charcoal-vein);
+            border-radius: var(--radius-full);
         }
 
         .select-custom {
@@ -738,6 +770,74 @@
             opacity: 0.7;
         }
 
+        .batch-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: var(--spacing-12);
+        }
+
+        @media (max-width: 700px) {
+            .batch-summary-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        .batch-stat {
+            border: 1px solid var(--color-charcoal-vein);
+            padding: var(--spacing-12);
+            background: var(--surface-panel);
+        }
+
+        .batch-stat-label {
+            font-family: var(--font-body);
+            font-size: 12px;
+            opacity: 0.7;
+            margin-bottom: var(--spacing-8);
+        }
+
+        .batch-stat-value {
+            font-family: var(--font-telemetry);
+            font-size: 20px;
+            color: var(--color-bone-glow);
+        }
+
+        .batch-result-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--font-body);
+            font-size: 14px;
+        }
+
+        .batch-result-table th,
+        .batch-result-table td {
+            text-align: left;
+            border-bottom: 1px solid var(--color-charcoal-vein);
+            padding: 12px 10px;
+            vertical-align: top;
+        }
+
+        .batch-result-table th {
+            opacity: 0.7;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .batch-result-table a {
+            color: var(--color-bone-glow);
+            text-decoration: none;
+            border-bottom: 1px solid var(--color-bone-glow);
+        }
+
+        .batch-result-table a:hover {
+            opacity: 0.7;
+        }
+
+        .batch-result-table code {
+            font-family: var(--font-telemetry);
+            font-size: 12px;
+        }
+
         /* ============================================
            METADATA BOXES
            ============================================ */
@@ -1050,7 +1150,7 @@
     <header class="site-header">
         <div class="header-row">
             <div>
-                <h1 class="wordmark">Auto-Translade AI</h1>
+                <h1 class="wordmark">Auto-Translate AI</h1>
                 <p class="header-telemetry">Hệ thống lồng tiếng tự động · Xuất bản tối ưu SEO</p>
             </div>
             <div style="display: flex; align-items: flex-end; gap: var(--spacing-8); flex-direction: column;">
@@ -1085,8 +1185,28 @@
         <!-- Step 1: Nguồn Video (Primary Block) -->
         <div class="panel-card primary-panel" id="setup-panel-1">
             <div class="form-group">
+                <label class="form-label main-focus-label">Chế độ nhập nguồn</label>
+                <div class="option-card-group" id="source-mode-group">
+                    <button type="button" class="option-btn active" data-val="single">1 link</button>
+                    <button type="button" class="option-btn" data-val="batch">Batch 1-50 link</button>
+                </div>
+            </div>
+
+            <div class="form-group" id="single-source-group">
                 <label class="form-label main-focus-label" for="video-url">Nguồn Video (YouTube, TikTok, Facebook, Douyin...)</label>
                 <input type="text" id="video-url" class="input-text url-input" placeholder="Dán đường dẫn video tại đây..." value="">
+                <div class="helper-text">Dùng khi bạn xử lý 1 video hoặc 1 URL duy nhất.</div>
+            </div>
+
+            <div class="form-group" id="batch-source-group" style="display: none;">
+                <label class="form-label main-focus-label" for="batch-links">Danh sách link batch (mỗi dòng 1 link)</label>
+                <textarea id="batch-links" class="input-text textarea-input" placeholder="https://www.douyin.com/video/...
+https://v.douyin.com/...
+https://www.tiktok.com/@..."></textarea>
+                <div class="source-mode-row">
+                    <div class="helper-text">Hỗ trợ 1-50 link. Batch sẽ chạy tuần tự từng video, không chạy song song.</div>
+                    <div class="batch-counter" id="batch-link-counter">0 / 50 link</div>
+                </div>
             </div>
             <div class="wizard-nav">
                 <div></div>
@@ -1235,6 +1355,28 @@
             </div>
         </div>
 
+        <div id="batch-status-panel" style="display: none; gap: var(--spacing-12); flex-direction: column;">
+            <div class="batch-summary-grid">
+                <div class="batch-stat">
+                    <div class="batch-stat-label">Batch ID</div>
+                    <div class="batch-stat-value" id="batch-status-id">-</div>
+                </div>
+                <div class="batch-stat">
+                    <div class="batch-stat-label">Tổng job</div>
+                    <div class="batch-stat-value" id="batch-status-total">0</div>
+                </div>
+                <div class="batch-stat">
+                    <div class="batch-stat-label">Xong</div>
+                    <div class="batch-stat-value" id="batch-status-done">0</div>
+                </div>
+                <div class="batch-stat">
+                    <div class="batch-stat-label">Lỗi</div>
+                    <div class="batch-stat-value" id="batch-status-failed">0</div>
+                </div>
+            </div>
+            <div class="helper-text" id="batch-status-note">Batch đang chờ khởi tạo...</div>
+        </div>
+
         <!-- Progress Steps Tracker -->
         <div class="progress-track">
             <div class="progress-fill" id="progress-bar"></div>
@@ -1301,51 +1443,102 @@
     <section class="section output-container panel-card" id="output-card">
         <div class="panel-subtitle" style="border-bottom: none; padding-bottom: 0; margin-bottom: 0;">Kết quả xử lý</div>
 
-        <!-- Video Player -->
-        <video id="result-video" class="video-player" controls>
-            <source src="" type="video/mp4">
-            Trình duyệt của bạn không hỗ trợ phát Video.
-        </video>
+        <div id="single-output-view">
+            <!-- Video Player -->
+            <video id="result-video" class="video-player" controls>
+                <source src="" type="video/mp4">
+                Trình duyệt của bạn không hỗ trợ phát Video.
+            </video>
 
-        <!-- Published Links -->
-        <div id="publishing-results" style="display: none;">
-            <div class="published-link" id="yt-link-container" style="display: none;">
-                <span>YouTube</span>
-                <a href="" id="yt-url" target="_blank">Xem trên YouTube →</a>
+            <!-- Published Links -->
+            <div id="publishing-results" style="display: none;">
+                <div class="published-link" id="yt-link-container" style="display: none;">
+                    <span>YouTube</span>
+                    <a href="" id="yt-url" target="_blank">Xem trên YouTube →</a>
+                </div>
+                <div class="published-link" id="fb-link-container" style="display: none; margin-top: var(--spacing-8);">
+                    <span>Facebook</span>
+                    <a href="" id="fb-url" target="_blank">Xem trên Facebook →</a>
+                </div>
             </div>
-            <div class="published-link" id="fb-link-container" style="display: none; margin-top: var(--spacing-8);">
-                <span>Facebook</span>
-                <a href="" id="fb-url" target="_blank">Xem trên Facebook →</a>
+
+            <!-- Copyable Metadata -->
+            <div class="form-group">
+                <label class="form-label">SEO Metadata đề xuất</label>
+
+                <div class="metadata-box">
+                    <h4>Tiêu đề</h4>
+                    <button class="btn-copy" onclick="copyText('meta-title')">Copy</button>
+                    <div class="metadata-text" id="meta-title">Chưa tạo</div>
+                </div>
+
+                <div class="metadata-box">
+                    <h4>Mô tả</h4>
+                    <button class="btn-copy" onclick="copyText('meta-desc')">Copy</button>
+                    <div class="metadata-text" id="meta-desc">Chưa tạo</div>
+                </div>
+
+                <div class="metadata-box">
+                    <h4>Tags / Hashtags</h4>
+                    <button class="btn-copy" onclick="copyText('meta-tags')">Copy</button>
+                    <div class="metadata-text" id="meta-tags">Chưa tạo</div>
+                </div>
             </div>
         </div>
 
-        <!-- Copyable Metadata -->
-        <div class="form-group">
-            <label class="form-label">SEO Metadata đề xuất</label>
-
-            <div class="metadata-box">
-                <h4>Tiêu đề</h4>
-                <button class="btn-copy" onclick="copyText('meta-title')">Copy</button>
-                <div class="metadata-text" id="meta-title">Chưa tạo</div>
+        <div id="batch-output-view" style="display: none; flex-direction: column; gap: var(--spacing-16);">
+            <div class="batch-summary-grid">
+                <div class="batch-stat">
+                    <div class="batch-stat-label">Batch ID</div>
+                    <div class="batch-stat-value" id="batch-output-id">-</div>
+                </div>
+                <div class="batch-stat">
+                    <div class="batch-stat-label">Tổng job</div>
+                    <div class="batch-stat-value" id="batch-output-total">0</div>
+                </div>
+                <div class="batch-stat">
+                    <div class="batch-stat-label">Success</div>
+                    <div class="batch-stat-value" id="batch-output-success">0</div>
+                </div>
+                <div class="batch-stat">
+                    <div class="batch-stat-label">Failed</div>
+                    <div class="batch-stat-value" id="batch-output-failed">0</div>
+                </div>
             </div>
 
-            <div class="metadata-box">
-                <h4>Mô tả</h4>
-                <button class="btn-copy" onclick="copyText('meta-desc')">Copy</button>
-                <div class="metadata-text" id="meta-desc">Chưa tạo</div>
+            <div class="published-link">
+                <span>Batch Report JSON</span>
+                <a href="#" id="batch-report-json-link" target="_blank">Mở batch_report.json →</a>
+            </div>
+            <div class="published-link">
+                <span>Batch Report Markdown</span>
+                <a href="#" id="batch-report-md-link" target="_blank">Mở batch_report.md →</a>
             </div>
 
-            <div class="metadata-box">
-                <h4>Tags / Hashtags</h4>
-                <button class="btn-copy" onclick="copyText('meta-tags')">Copy</button>
-                <div class="metadata-text" id="meta-tags">Chưa tạo</div>
+            <div class="form-group">
+                <label class="form-label">Kết quả từng job</label>
+                <div style="overflow-x: auto;">
+                    <table class="batch-result-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Trạng thái</th>
+                                <th>URL</th>
+                                <th>Output</th>
+                                <th>Video</th>
+                                <th>Lỗi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="batch-jobs-tbody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </section>
 
     <!-- Footer Telemetry -->
     <footer style="padding-top: var(--spacing-12); border-top: 1px solid var(--color-charcoal-vein);">
-        <p class="header-telemetry" style="opacity: 0.3;">Auto-Translade AI · Pipeline v2.0 · Midnight Terminal</p>
+        <p class="header-telemetry" style="opacity: 0.3;">Auto-Translate AI · Pipeline v2.0 · Midnight Terminal</p>
     </footer>
 </div>
 
@@ -1385,7 +1578,18 @@
         if (stepNum > 1 && currentSetupStep === 1) {
             const urlInput = document.getElementById("video-url").value.trim();
             const fileInput = document.getElementById("file-path").value.trim();
-            if (!urlInput && !fileInput) {
+            const batchLinks = getNormalizedBatchLinks();
+            if (activeSourceMode === "batch") {
+                if (batchLinks.length === 0) {
+                    showToast("Vui lòng dán ít nhất 1 link cho batch.", "error");
+                    return;
+                }
+                if (batchLinks.length > 50) {
+                    showToast("Batch chỉ hỗ trợ tối đa 50 link mỗi lần chạy.", "error");
+                    return;
+                }
+            }
+            if (activeSourceMode !== "batch" && !urlInput && !fileInput) {
                 showToast("Vui lòng cung cấp URL Video hoặc đường dẫn file local trước!", "error");
                 return;
             }
@@ -1424,6 +1628,8 @@
     let activeVoice = "female";
     let activeBgMode = "demucs";
     let activeMode = "dub_audio";
+    let activeSourceMode = "single";
+    let activeTaskKind = "single";
     let activeTaskId = null;
     let pollIntervalId = null;
 
@@ -1431,8 +1637,10 @@
     const voiceBtns = document.querySelectorAll("#voice-group button");
     const bgBtns = document.querySelectorAll("#bg-group button");
     const modeBtns = document.querySelectorAll("#mode-group button");
+    const sourceModeBtns = document.querySelectorAll("#source-mode-group button");
 
     const videoUrlEl = document.getElementById("video-url");
+    const batchLinksEl = document.getElementById("batch-links");
     if (videoUrlEl) {
         const handleUrlChange = (val) => {
             if (val.includes("douyin.com")) {
@@ -1446,6 +1654,38 @@
         videoUrlEl.addEventListener("paste", (e) => {
             setTimeout(() => handleUrlChange(videoUrlEl.value), 0);
         });
+    }
+
+    function getNormalizedBatchLinks() {
+        return (batchLinksEl ? batchLinksEl.value : "")
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith("#"));
+    }
+
+    function updateBatchLinkCounter() {
+        const counter = document.getElementById("batch-link-counter");
+        if (!counter) return;
+        const count = getNormalizedBatchLinks().length;
+        counter.textContent = `${count} / 50 link`;
+        counter.style.borderColor = count > 50 ? "var(--color-error)" : "var(--color-charcoal-vein)";
+        counter.style.color = count > 50 ? "var(--color-error)" : "var(--color-bone-glow)";
+    }
+
+    if (batchLinksEl) {
+        const handleBatchLinksChange = () => {
+            updateBatchLinkCounter();
+            const hasDouyin = getNormalizedBatchLinks().some(link => link.includes("douyin.com"));
+            if (hasDouyin) {
+                const srcLangSelect = document.getElementById("src-lang");
+                if (srcLangSelect && srcLangSelect.value === "auto") {
+                    srcLangSelect.value = "zh-CN";
+                }
+            }
+        };
+        batchLinksEl.addEventListener("input", handleBatchLinksChange);
+        batchLinksEl.addEventListener("paste", () => setTimeout(handleBatchLinksChange, 0));
+        updateBatchLinkCounter();
     }
 
     voiceBtns.forEach(btn => {
@@ -1470,8 +1710,40 @@
             btn.classList.add("active");
             activeMode = btn.getAttribute("data-val");
             onModeChanged(activeMode);
+            onSourceModeChanged(activeSourceMode);
         });
     });
+
+    sourceModeBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            sourceModeBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeSourceMode = btn.getAttribute("data-val");
+            onSourceModeChanged(activeSourceMode);
+        });
+    });
+
+    function onSourceModeChanged(mode) {
+        const singleGroup = document.getElementById("single-source-group");
+        const batchGroup = document.getElementById("batch-source-group");
+        const filePathInput = document.getElementById("file-path");
+        const btnSubmit = document.getElementById("btn-submit");
+
+        if (singleGroup) singleGroup.style.display = mode === "single" ? "flex" : "none";
+        if (batchGroup) batchGroup.style.display = mode === "batch" ? "flex" : "none";
+
+        if (filePathInput) {
+            filePathInput.disabled = mode === "batch";
+            filePathInput.style.opacity = mode === "batch" ? "0.45" : "1";
+            if (mode === "batch") {
+                filePathInput.value = "";
+            }
+        }
+
+        if (btnSubmit) {
+            btnSubmit.textContent = getCurrentSubmitButtonText();
+        }
+    }
 
     function onModeChanged(mode) {
         const voiceConfig = document.getElementById("voice-config-group");
@@ -1543,6 +1815,13 @@
         });
     }
 
+    function getCurrentSubmitButtonText() {
+        if (activeSourceMode === "batch") {
+            return "Bắt đầu batch queue";
+        }
+        return getSubmitButtonText();
+    }
+
     function getSubmitButtonText() {
         return activeMode === "subtitle_only" ? "Bắt đầu xử lý phụ đề" : "Bắt đầu xử lý lồng tiếng";
     }
@@ -1560,15 +1839,24 @@
     async function submitPipeline() {
         const urlInput = document.getElementById("video-url").value.trim();
         const fileInput = document.getElementById("file-path").value.trim();
+        const batchLinks = getNormalizedBatchLinks();
 
-        if (!urlInput && !fileInput) {
+        if (activeSourceMode === "batch" && batchLinks.length === 0) {
+            showToast("Vui lòng dán ít nhất 1 link cho batch.", "error");
+            return;
+        }
+
+        if (activeSourceMode === "batch" && batchLinks.length > 50) {
+            showToast("Batch chỉ hỗ trợ tối đa 50 link mỗi lần chạy.", "error");
+            return;
+        }
+
+        if (activeSourceMode !== "batch" && !urlInput && !fileInput) {
             showToast("Vui lòng cung cấp URL Video hoặc đường dẫn video local!", "error");
             return;
         }
 
-        const payload = {
-            url: urlInput || null,
-            file_path: fileInput || null,
+        const commonPayload = {
             source_lang: document.getElementById("src-lang").value,
             voice: activeVoice,
             bg_mode: activeBgMode,
@@ -1584,12 +1872,27 @@
             mask_opacity: parseFloat(document.getElementById("mask-opacity-range").value)
         };
 
+        let endpoint = "/api/run";
+        let payload = {
+            ...commonPayload,
+            url: urlInput || null,
+            file_path: fileInput || null,
+        };
+
+        if (activeSourceMode === "batch") {
+            endpoint = "/api/batch/run";
+            payload = {
+                ...commonPayload,
+                links_text: batchLinks.join("\n"),
+            };
+        }
+
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = true;
         btnSubmit.textContent = "Đang khởi chạy...";
 
         try {
-            const resp = await fetch("/api/run", {
+            const resp = await fetch(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
@@ -1612,19 +1915,23 @@
 
             const data = await resp.json();
             activeTaskId = data.task_id;
+            activeTaskKind = activeSourceMode === "batch" ? "batch" : "single";
 
             document.getElementById("control-card").style.display = "none";
             document.getElementById("status-card").style.display = "flex";
             document.getElementById("output-card").style.display = "none";
+            document.getElementById("speaker-config-card").style.display = "none";
+            document.getElementById("batch-status-panel").style.display = activeTaskKind === "batch" ? "flex" : "none";
             document.getElementById("terminal-log").innerHTML = '<div class="terminal-line info">Bắt đầu tiến trình (Task: ' + activeTaskId.substring(0, 8) + '...)...</div>';
 
             resetProgressSteps();
+            resetBatchOutput();
             startPolling();
 
         } catch (err) {
             showToast("Lỗi: " + err.message, "error");
             btnSubmit.disabled = false;
-            btnSubmit.textContent = getSubmitButtonText();
+            btnSubmit.textContent = getCurrentSubmitButtonText();
         }
     }
 
@@ -1718,7 +2025,7 @@
 
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
-        btnSubmit.textContent = getSubmitButtonText();
+        btnSubmit.textContent = getCurrentSubmitButtonText();
 
         document.getElementById("speaker-config-card").style.display = "flex";
         document.getElementById("output-card").style.display = "none";
@@ -1825,6 +2132,21 @@
         document.getElementById("step-1").classList.add("active");
     }
 
+    function resetBatchOutput() {
+        document.getElementById("batch-status-id").textContent = "-";
+        document.getElementById("batch-status-total").textContent = "0";
+        document.getElementById("batch-status-done").textContent = "0";
+        document.getElementById("batch-status-failed").textContent = "0";
+        document.getElementById("batch-status-note").textContent = "Batch đang chờ khởi tạo...";
+        document.getElementById("batch-output-id").textContent = "-";
+        document.getElementById("batch-output-total").textContent = "0";
+        document.getElementById("batch-output-success").textContent = "0";
+        document.getElementById("batch-output-failed").textContent = "0";
+        document.getElementById("batch-jobs-tbody").innerHTML = "";
+        document.getElementById("batch-report-json-link").href = "#";
+        document.getElementById("batch-report-md-link").href = "#";
+    }
+
     function startPolling() {
         if (pollIntervalId) clearInterval(pollIntervalId);
         pollIntervalId = setInterval(checkStatus, 1500);
@@ -1838,12 +2160,27 @@
             if (!resp.ok) return;
 
             const data = await resp.json();
+            activeTaskKind = data.task_kind || activeTaskKind;
             updateTerminalLogs(data.logs);
             updateProgressTracker(data.progress_step, data.status);
+            if (data.task_kind === "batch" && data.batch) {
+                updateBatchStatusSummary(data.batch);
+            }
 
             if (data.status === "success") {
                 clearInterval(pollIntervalId);
-                handlePipelineSuccess(data.result);
+                if (data.task_kind === "batch") {
+                    handleBatchSuccess(data.result || data.batch, false);
+                } else {
+                    handlePipelineSuccess(data.result);
+                }
+            } else if (data.status === "partial_failed") {
+                clearInterval(pollIntervalId);
+                if (data.task_kind === "batch") {
+                    handleBatchSuccess(data.result || data.batch, true);
+                } else {
+                    handlePipelinePartialFailure(data.result);
+                }
             } else if (data.status === "failed") {
                 clearInterval(pollIntervalId);
                 handlePipelineFailure(data.error);
@@ -1931,6 +2268,9 @@
         } else if (status === "success") {
             badge.style.color = "var(--color-success)";
             badge.innerHTML = `✓ Hoàn tất`;
+        } else if (status === "partial_failed") {
+            badge.style.color = "var(--color-warning)";
+            badge.innerHTML = `âš  HoÃ n táº¥t cÃ³ lá»—i`;
         } else if (status === "failed") {
             badge.style.color = "var(--color-error)";
             badge.innerHTML = `✗ Lỗi`;
@@ -1946,13 +2286,92 @@
     // ============================================
     // PIPELINE RESULT HANDLERS
     // ============================================
+    function setOutputView(kind) {
+        document.getElementById("single-output-view").style.display = kind === "single" ? "block" : "none";
+        document.getElementById("batch-output-view").style.display = kind === "batch" ? "flex" : "none";
+    }
+
+    function toOutputHref(path) {
+        if (!path) return "#";
+        const normalized = String(path).replace(/\\/g, "/");
+        const marker = "/output/";
+        const idx = normalized.indexOf(marker);
+        if (idx === -1) return "#";
+        return "/output/" + normalized.slice(idx + marker.length);
+    }
+
+    function updateBatchStatusSummary(batchData) {
+        if (!batchData || !batchData.summary) return;
+        const summary = batchData.summary;
+        const finished = (summary.success || 0) + (summary.failed || 0) + (summary.skipped_duplicate || 0);
+        document.getElementById("batch-status-id").textContent = batchData.batch_id || "-";
+        document.getElementById("batch-status-total").textContent = String(summary.total_jobs || 0);
+        document.getElementById("batch-status-done").textContent = String(finished);
+        document.getElementById("batch-status-failed").textContent = String((summary.failed || 0) + (summary.publish_failed || 0));
+
+        const runningJob = (batchData.jobs || []).find(job => job.status === "running");
+        if (runningJob) {
+            document.getElementById("batch-status-note").textContent = `Đang chạy job ${runningJob.job_index}/${summary.total_jobs}: ${runningJob.url}`;
+        } else {
+            document.getElementById("batch-status-note").textContent = `Đã xử lý ${finished}/${summary.total_jobs} job.`;
+        }
+    }
+
+    function renderBatchOutput(batchData) {
+        if (!batchData || !batchData.summary) return;
+        const summary = batchData.summary;
+        document.getElementById("batch-output-id").textContent = batchData.batch_id || "-";
+        document.getElementById("batch-output-total").textContent = String(summary.total_jobs || 0);
+        document.getElementById("batch-output-success").textContent = String(summary.success || 0);
+        document.getElementById("batch-output-failed").textContent = String((summary.failed || 0) + (summary.publish_failed || 0));
+        document.getElementById("batch-report-json-link").href = toOutputHref(batchData.report_json);
+        document.getElementById("batch-report-md-link").href = toOutputHref(batchData.report_md);
+
+        const tbody = document.getElementById("batch-jobs-tbody");
+        tbody.innerHTML = "";
+        (batchData.jobs || []).forEach(job => {
+            const tr = document.createElement("tr");
+            const outputText = job.output_dir ? `<code>${escapeHtml(job.output_dir)}</code>` : "";
+            const videoHref = job.rendered_video ? toOutputHref(job.rendered_video) : "#";
+            const videoLink = job.rendered_video ? `<a href="${videoHref}" target="_blank">Mở video</a>` : "";
+            tr.innerHTML = `
+                <td>${job.job_index}</td>
+                <td>${escapeHtml(job.status || "")}</td>
+                <td>${escapeHtml(job.url || "")}</td>
+                <td>${outputText}</td>
+                <td>${videoLink}</td>
+                <td>${escapeHtml(job.error_message || "")}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function handleBatchSuccess(batchData, hasWarnings) {
+        const btnSubmit = document.getElementById("btn-submit");
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = getCurrentSubmitButtonText();
+
+        setOutputView("batch");
+        renderBatchOutput(batchData);
+        document.getElementById("output-card").style.display = "flex";
+        document.getElementById("control-card").style.display = "flex";
+        document.getElementById("batch-status-panel").style.display = "none";
+        goToStep(1);
+        document.getElementById("output-card").scrollIntoView({ behavior: "smooth" });
+
+        if (hasWarnings) {
+            showToast("Batch đã chạy xong nhưng có job lỗi. Xem bảng kết quả bên dưới.", "error");
+        }
+    }
+
     function handlePipelineSuccess(result) {
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
-        btnSubmit.textContent = getSubmitButtonText();
+        btnSubmit.textContent = getCurrentSubmitButtonText();
 
         const outputCard = document.getElementById("output-card");
         outputCard.style.display = "flex";
+        setOutputView("single");
 
         const videoEl = document.getElementById("result-video");
         if (result.files && result.files.dubbed_video) {
@@ -2020,7 +2439,8 @@
     function handlePipelineFailure(errMessage) {
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
-        btnSubmit.textContent = getSubmitButtonText();
+        btnSubmit.textContent = getCurrentSubmitButtonText();
+        document.getElementById("batch-status-panel").style.display = "none";
         
         // Show control wizard again on error
         document.getElementById("control-card").style.display = "flex";
@@ -2032,9 +2452,27 @@
         btnSubmit.disabled = false;
         btnSubmit.textContent = "Tiếp tục (Resume)";
 
+        document.getElementById("batch-status-panel").style.display = "none";
+
         // Show control wizard again
         document.getElementById("control-card").style.display = "flex";
         showToast("Đợi dịch transcript. Kiểm tra TRANSLATE_PENDING.txt: " + result.work_dir, "error");
+    }
+
+    function handlePipelinePartialFailure(result) {
+        const btnSubmit = document.getElementById("btn-submit");
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = getCurrentSubmitButtonText();
+        document.getElementById("batch-status-panel").style.display = "none";
+
+        // Show control wizard again so the user can retry or resume the run.
+        document.getElementById("control-card").style.display = "flex";
+
+        const pendingPath = result?.files?.tts_pending_segments || result?.output_dir || "";
+        const message = pendingPath
+            ? "TTS chÆ°a hoÃ n táº¥t. Kiá»ƒm tra vÃ  resume tá»«: " + pendingPath
+            : "TTS chÆ°a hoÃ n táº¥t. Vui lÃ²ng kiá»ƒm tra log Ä‘á»ƒ resume.";
+        showToast(message, "error");
     }
 
     function copyText(elementId) {
@@ -2066,6 +2504,13 @@
             if (btnIcon) btnIcon.textContent = "🌙";
         }
     }
+
+    (function initUiState() {
+        onModeChanged(activeMode);
+        onSourceModeChanged(activeSourceMode);
+        resetBatchOutput();
+        setOutputView("single");
+    })();
 
     // Apply saved theme on page load
     (function initTheme() {
