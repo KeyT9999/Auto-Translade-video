@@ -254,6 +254,10 @@ def run_single_video_pipeline(
             mask_opacity=extra_options.get("mask_opacity"),
             no_dub_audio=bool(extra_options.get("no_dub_audio", False)),
             from_step=extra_options.get("from_step"),
+            logo_path=extra_options.get("logo_path"),
+            logo_position=extra_options.get("logo_position", "top_right"),
+            logo_width=extra_options.get("logo_width"),
+            output_playback_speed=float(extra_options.get("output_playback_speed", 1.0)),
         )
         report_path = (
             os.path.join(report["output_dir"], "report.json")
@@ -657,10 +661,40 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip TTS narration generation, keeping only original audio",
     )
+    parser.add_argument(
+        "--logo-path",
+        default=None,
+        help="Path to logo image file to overlay on the video",
+    )
+    parser.add_argument(
+        "--logo-position",
+        choices=["top_left", "top_right", "bottom_left", "bottom_right"],
+        default="top_right",
+        help="Position to place the logo",
+    )
+    parser.add_argument(
+        "--logo-width",
+        type=int,
+        default=None,
+        help="Resize logo width in pixels",
+    )
+
+    parser.add_argument(
+        "--output-speed",
+        type=float,
+        default=config.OUTPUT_PLAYBACK_SPEED,
+        help=f"Output video playback speed: 1.0, 1.1, 1.2, 1.3 (default: {config.OUTPUT_PLAYBACK_SPEED})",
+    )
 
     args = parser.parse_args()
     if args.subtitle_only:
         args.mode = "subtitle_only"
+
+    from src.output_speed import validate_output_speed
+    try:
+        args.output_speed = validate_output_speed(args.output_speed)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.no_bg_music:
         args.bg_mode = "none"
@@ -767,10 +801,29 @@ def run_pipeline_vi(
     mask_opacity: float | None = None,
     no_dub_audio: bool = False,
     from_step: str | None = None,
+    logo_path: str | None = None,
+    logo_position: str = "top_right",
+    logo_width: int | None = None,
+    output_playback_speed: float = 1.0,
 ) -> dict:
+    from src.output_speed import validate_output_speed
+    output_playback_speed = validate_output_speed(output_playback_speed)
     if url:
         from src.utils import extract_url
         url = extract_url(url)
+
+    if logo_path is None:
+        logo_path = getattr(config, "LOGO_PATH", None)
+    if not logo_position:
+        logo_position = getattr(config, "LOGO_POSITION", "top_right")
+    if logo_width is None:
+        logo_width = getattr(config, "LOGO_WIDTH", None)
+
+    logo_cfg = {
+        "logo_path": logo_path,
+        "logo_position": logo_position,
+        "logo_width": logo_width,
+    }
 
     start_time = time.time()
 
@@ -1099,26 +1152,6 @@ def run_pipeline_vi(
                 "work_dir": work_dir,
                 "failed_ranges": failed_ranges or None,
             }
-            logger.warning("Translation pending â€” see TRANSLATE_PENDING.txt in work dir")
-            return {
-                "status": "translate_pending",
-                "work_dir": work_dir,
-                "failed_ranges": failed_ranges or None,
-            }
-            logger.error(f"Automatic contextual translation failed: {e}")
-            try:
-                logger.info("Falling back to old translation...")
-                from src.translator import translate_segments
-
-                segments = translate_segments(segments, source_lang)
-                translation_source = "legacy_fallback"
-                logger.info("Fallback translation complete.")
-            except Exception as ex:
-                logger.error(f"Fallback translation also failed: {ex}")
-                logger.info("Falling back to manual translation mode...")
-                _write_translate_pending_hint(work_dir, "vi-VN", source_lang, mode=mode)
-                logger.warning("Translation pending — see TRANSLATE_PENDING.txt in work dir")
-                return {"status": "translate_pending", "work_dir": work_dir}
 
     try:
         segments, quality_report = finalize_translation_segments(segments)
@@ -1136,30 +1169,6 @@ def run_pipeline_vi(
         _write_translate_pending_hint(work_dir, "vi-VN", source_lang, mode=mode)
         logger.warning("Translation pending - see TRANSLATE_PENDING.txt in work dir")
         return {"status": "translate_pending", "work_dir": work_dir}
-        logger.warning("Translation pending â€” see TRANSLATE_PENDING.txt in work dir")
-        return {"status": "translate_pending", "work_dir": work_dir}
-        if translation_source in {"contextual", "cache"}:
-            try:
-                logger.info("Falling back to old translation after contextual QA failure...")
-                from src.translator import translate_segments
-
-                fallback_segments = translate_segments(segments, source_lang)
-                translation_source = "legacy_fallback"
-                segments, quality_report = finalize_translation_segments(fallback_segments)
-                if has_blocking_errors(quality_report):
-                    raise RuntimeError("Fallback translation still has blocking errors after repair.")
-                logger.info("Fallback translation passed subtitle render flow.")
-            except Exception as fallback_exc:
-                logger.error("Fallback translation after QA failure also failed: %s", fallback_exc)
-                logger.info("Falling back to manual translation mode...")
-                _write_translate_pending_hint(work_dir, "vi-VN", source_lang, mode=mode)
-                logger.warning("Translation pending — see TRANSLATE_PENDING.txt in work dir")
-                return {"status": "translate_pending", "work_dir": work_dir}
-        else:
-            logger.info("Falling back to manual translation mode...")
-            _write_translate_pending_hint(work_dir, "vi-VN", source_lang, mode=mode)
-            logger.warning("Translation pending — see TRANSLATE_PENDING.txt in work dir")
-            return {"status": "translate_pending", "work_dir": work_dir}
 
     segments = _synchronize_translation_segments(
         segments,
@@ -1422,6 +1431,7 @@ def run_pipeline_vi(
         slow_factor = config.AUDIO_SLOW_FACTOR
         total_duration = max(seg["end"] for seg in segments) + 1.0 if segments else 0
 
+
         if slow_factor < 1.0:
             slow_pct = round((1.0 - slow_factor) * 100)
             logger.info(f"STEP 6a: Slowing segments {slow_pct}% (atempo={slow_factor})")
@@ -1445,6 +1455,30 @@ def run_pipeline_vi(
         fit_log_path = os.path.join(work_dir, "fit_adjustments.json")
         with open(fit_log_path, "w", encoding="utf-8") as f:
             json.dump(fit_adjustments, f, ensure_ascii=False, indent=2)
+
+        # Sync subtitle timings to actual TTS duration minus silent padding
+        fit_durations = {adj["id"]: adj["after"] for adj in fit_adjustments}
+        logger.info("Adjusting Vietnamese subtitle timings based on actual TTS duration...")
+        silent_padding = getattr(config, "SUBTITLE_SILENT_PADDING", 0.5)
+        for seg in segments:
+            seg_id = seg["id"]
+            if seg_id in fit_durations:
+                actual_dur = fit_durations[seg_id]
+                sub_dur = max(0.1, actual_dur - silent_padding)
+                new_end = seg["start"] + sub_dur
+                seg["end"] = round(new_end, 3)
+
+        # Save updated segments with synced timings back to transcript_vi.json
+        with open(transcript_vi_path, "w", encoding="utf-8") as f:
+            json.dump(segments, f, ensure_ascii=False, indent=2)
+        logger.info(f"Updated subtitle timings written to: {transcript_vi_path}")
+
+        # Re-generate transcript_vi.srt with updated timings
+        generate_srt(
+            segments,
+            os.path.join(work_dir, "transcript_vi.srt"),
+            text_field="subtitle_vi",
+        )
 
         logger.info("STEP 6c: Merging audio segments")
         merge_segments(
@@ -1489,14 +1523,18 @@ def run_pipeline_vi(
                         "mask_extra_height_percent": config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT,
                         "mask_extra_opacity": config.SUBTITLE_MASK_EXTRA_OPACITY,
                     }
-                    render_video_with_cover(video_path, ass_path, subtitled_video_path, cover_cfg)
+                    render_video_with_cover(video_path, ass_path, subtitled_video_path, cover_cfg, logo_cfg)
                 except Exception as e:
                     logger.warning(f"ASS renderer failed ({e}), falling back to SRT burn...")
                     from src.video_merger import burn_subtitles_to_video
                     burn_subtitles_to_video(video_path, srt_path, subtitled_video_path)
             else:
-                shutil.copy2(video_path, subtitled_video_path)
-                logger.info(f"Copying original video to output: {subtitled_video_path}")
+                logo_file = logo_cfg.get("logo_path") if logo_cfg else None
+                if logo_file and os.path.exists(logo_file):
+                    render_video_with_cover(video_path, None, subtitled_video_path, None, logo_cfg)
+                else:
+                    shutil.copy2(video_path, subtitled_video_path)
+                    logger.info(f"Copying original video to output: {subtitled_video_path}")
             dubbed_video_path = subtitled_video_path
         else:
             logger.info("STEP 7: Creating dubbed video")
@@ -1532,7 +1570,62 @@ def run_pipeline_vi(
                     logger.warning(f"ASS generation failed ({e}), falling back to SRT...")
                     sub_path = os.path.join(work_dir, "transcript_vi.srt")
             
-            merge_video(video_path, merged_audio_path, dubbed_video_path, srt_path=sub_path, cover_config=cover_cfg)
+            merge_video(video_path, merged_audio_path, dubbed_video_path, srt_path=sub_path, cover_config=cover_cfg, logo_config=logo_cfg)
+
+    # --- Playback Speed Adjustment (Post-processing) ---
+    rendered_video_original_speed = dubbed_video_path
+    rendered_video_final = dubbed_video_path
+    speed_adjusted = False
+    adjusted_srt = os.path.join(work_dir, "transcript_vi.srt")
+    adjusted_ass = os.path.join(work_dir, "transcript_vi.ass") if (subtitle_mode and burn_subtitles) or os.path.exists(os.path.join(work_dir, "transcript_vi.ass")) else None
+    adjusted_json = os.path.join(work_dir, "transcript_vi.json")
+
+    if output_playback_speed > 1.0 and dubbed_video_path and os.path.exists(dubbed_video_path):
+        from src.output_speed import (
+            apply_playback_speed_to_video,
+            adjust_srt_for_speed,
+            adjust_ass_for_speed,
+            adjust_transcript_json_for_speed,
+            build_speed_suffix,
+        )
+        suffix = build_speed_suffix(output_playback_speed)
+        
+        # Build new filenames with speed suffix
+        speed_video_name = os.path.splitext(os.path.basename(dubbed_video_path))[0] + suffix + os.path.splitext(dubbed_video_path)[1]
+        rendered_video_final = os.path.join(work_dir, speed_video_name)
+        
+        logger.info("=" * 60)
+        logger.info(f"Applying final output playback speed adjustment: {output_playback_speed}x")
+        logger.info(f"Speeding up video: {dubbed_video_path} -> {rendered_video_final}")
+        apply_playback_speed_to_video(dubbed_video_path, rendered_video_final, output_playback_speed)
+        
+        # Rescale subtitles and transcripts
+        srt_path_orig = os.path.join(work_dir, "transcript_vi.srt")
+        adjusted_srt = os.path.join(work_dir, f"transcript_vi{suffix}.srt")
+        logger.info(f"Rescaling SRT: {srt_path_orig} -> {adjusted_srt}")
+        adjust_srt_for_speed(srt_path_orig, adjusted_srt, output_playback_speed)
+        
+        ass_path_orig = os.path.join(work_dir, "transcript_vi.ass")
+        if os.path.exists(ass_path_orig):
+            adjusted_ass = os.path.join(work_dir, f"transcript_vi{suffix}.ass")
+            logger.info(f"Rescaling ASS: {ass_path_orig} -> {adjusted_ass}")
+            adjust_ass_for_speed(ass_path_orig, adjusted_ass, output_playback_speed)
+            
+        json_path_orig = os.path.join(work_dir, "transcript_vi.json")
+        adjusted_json = os.path.join(work_dir, f"transcript_vi{suffix}.json")
+        logger.info(f"Rescaling JSON: {json_path_orig} -> {adjusted_json}")
+        adjust_transcript_json_for_speed(json_path_orig, adjusted_json, output_playback_speed)
+        
+        # Clean up original speed video if not requested to keep
+        if not getattr(config, "OUTPUT_SPEED_KEEP_ORIGINAL_RENDER", True):
+            try:
+                os.remove(dubbed_video_path)
+                logger.info(f"Removed original speed video: {dubbed_video_path}")
+            except OSError as exc:
+                logger.warning(f"Could not remove original speed video: {exc}")
+                
+        dubbed_video_path = rendered_video_final
+        speed_adjusted = True
 
     # --- Step 8: Generate thumbnails + YouTube metadata ---
     content_result = {"thumbnails": [], "metadata": {}}
@@ -1601,6 +1694,8 @@ def run_pipeline_vi(
         "source_language": lang_code,
         "target_language": "vi-VN",
         "voice_id": voice_id,
+        "output_playback_speed": output_playback_speed,
+        "speed_adjusted": speed_adjusted,
         "total_segments": len(segments),
         "total_original_duration": round(sum(s["duration"] for s in segments), 3),
         "total_tts_duration": round(sum(float(r.get("actual_duration", 0.0) or 0.0) for r in tts_results), 3),
@@ -1630,6 +1725,11 @@ def run_pipeline_vi(
             "transcript_vi_ass": os.path.join(work_dir, "transcript_vi.ass") if (subtitle_mode and burn_subtitles) else None,
             "audio_vi_full": merged_audio_path if (mode == "dub_audio" and not subtitle_mode) else None,
             "dubbed_video": dubbed_video_path,
+            "rendered_video_original_speed": rendered_video_original_speed,
+            "rendered_video_final": rendered_video_final,
+            "transcript_vi_speed_srt": adjusted_srt if speed_adjusted else None,
+            "transcript_vi_speed_ass": adjusted_ass if speed_adjusted else None,
+            "transcript_vi_speed_json": adjusted_json if speed_adjusted else None,
             "thumbnails": content_result.get("thumbnails", []),
             "youtube_metadata": content_result.get("metadata_file"),
             "tts_pending_segments": pending_tts_path if os.path.exists(pending_tts_path) else None,
@@ -1700,6 +1800,10 @@ def main():
             mask_opacity=args.mask_opacity,
             no_dub_audio=args.no_dub_audio,
             from_step=args.from_step,
+            logo_path=args.logo_path,
+            logo_position=args.logo_position,
+            logo_width=args.logo_width,
+            output_playback_speed=args.output_speed,
         )
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)

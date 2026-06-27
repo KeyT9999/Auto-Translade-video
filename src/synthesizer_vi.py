@@ -14,6 +14,94 @@ from src.utils import setup_logging
 
 logger = setup_logging("synthesizer_vi")
 
+import sys
+import atexit
+
+_local_server_process = None
+_server_started_by_us = False
+
+def _ensure_local_omnivoice_server_running() -> str:
+    """Checks if the local sidecar server is running, and starts it if not."""
+    global _local_server_process, _server_started_by_us
+    port = getattr(config, "OMNIVOICE_LOCAL_PORT", 3901)
+    base_url = f"http://127.0.0.1:{port}"
+    
+    # Check if already running
+    try:
+        response = requests.get(f"{base_url}/ping", timeout=1)
+        if response.status_code == 200:
+            status = response.json().get("status")
+            if status == "ready":
+                logger.info("Local OmniVoice sidecar server is already running and ready.")
+                return base_url
+    except requests.RequestException:
+        pass
+        
+    # If not running, start it
+    logger.info("Local OmniVoice sidecar server is not running. Starting it...")
+    studio_path = getattr(config, "OMNIVOICE_STUDIO_PATH", "d:/MMO/OmniVoice-Studio")
+    venv_python = os.path.join(studio_path, ".venv", "Scripts", "python.exe")
+    if not os.path.exists(venv_python):
+        venv_python = "python"
+        
+    server_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools", "omnivoice_local_server.py")
+    if not os.path.exists(server_script):
+        server_script = "tools/omnivoice_local_server.py"
+        
+    cmd = [venv_python, server_script, "--port", str(port)]
+    logger.info("Running command: %s", " ".join(cmd))
+    
+    _local_server_process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True
+    )
+    _server_started_by_us = True
+    
+    # Wait for the server to be ready
+    start_time = time.time()
+    timeout = 25.0
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get(f"{base_url}/ping", timeout=1)
+            if response.status_code == 200:
+                status = response.json().get("status")
+                if status == "ready":
+                    logger.info("Local OmniVoice sidecar server started and ready in %.1fs.", time.time() - start_time)
+                    return base_url
+                else:
+                    logger.info("Local OmniVoice sidecar server is loading model... (status: %s)", status)
+        except requests.RequestException:
+            pass
+        time.sleep(1.0)
+        
+    raise RuntimeError(f"Timed out waiting for local OmniVoice server to start on port {port} (timeout={timeout}s)")
+
+def _shutdown_local_omnivoice_server():
+    """Sends a shutdown command to the local server if we started it."""
+    global _local_server_process, _server_started_by_us
+    if not _server_started_by_us:
+        return
+    port = getattr(config, "OMNIVOICE_LOCAL_PORT", 3901)
+    base_url = f"http://127.0.0.1:{port}"
+    logger.info("Shutting down local OmniVoice sidecar server on port %s...", port)
+    try:
+        requests.post(f"{base_url}/shutdown", timeout=2)
+    except requests.RequestException:
+        pass
+    if _local_server_process:
+        try:
+            _local_server_process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            _local_server_process.kill()
+        _local_server_process = None
+        _server_started_by_us = False
+        logger.info("Local OmniVoice sidecar server process terminated.")
+
+# Register the cleanup hook
+atexit.register(_shutdown_local_omnivoice_server)
+
 POLL_INTERVAL = 2
 POLL_TIMEOUT = int(os.getenv("LUCYLAB_POLL_TIMEOUT", "300"))
 LUCYLAB_RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
@@ -324,19 +412,69 @@ def _render_downloaded_audio_to_wav(
     return audio, len(audio) / 1000.0
 
 
+def _call_tiktok(text_vi: str, voice_id: str) -> bytes:
+    import base64
+    
+    url = "https://api16-normal-c-useast1a.tiktokv.com/media/api/text/speech/invoke/"
+    headers = {
+        "User-Agent": "com.zhiliaoapp.musically/2022600030 (Linux; U; Android 7.1.2; es_US; SM-G965N; Build/QP1A.190711.020; Cronet/TTNetVersion:5f964076 2021-12-10 QuicVersion:477b2526 2021-11-23)",
+    }
+    
+    session_id = getattr(config, "TIKTOK_SESSION_ID", "")
+    if session_id:
+        headers["Cookie"] = f"sessionid={session_id}"
+        
+    params = {
+        "req_text": text_vi,
+        "speaker_map_type": 0,
+        "text_speaker": voice_id,
+        "aid": 1233
+    }
+    
+    response = requests.post(url, params=params, headers=headers, timeout=30)
+    response.raise_for_status()
+    result = response.json()
+    
+    status_code = result.get("status_code")
+    if status_code != 0:
+        message = result.get("message", "Unknown TikTok TTS error")
+        raise RuntimeError(f"TikTok TTS API returned error (status_code {status_code}): {message}")
+        
+    data = result.get("data", {})
+    v_str = data.get("v_str")
+    if not v_str:
+        raise RuntimeError("TikTok TTS response did not contain 'v_str' field.")
+        
+    return base64.b64decode(v_str)
+
+
 def synthesize_segment_vi(
     text_vi: str,
     output_path: str,
     target_duration: float | None = None,
     voice_id: str | None = None,
 ) -> dict:
-    if not voice_id:
+    provider = getattr(config, "TTS_PROVIDER", "lucylab")
+    
+    # Auto-detect if voice_id is an OmniVoice ID, local audio file, or TikTok voice
+    if voice_id:
+        is_omnivoice_hex = len(voice_id) == 8 and all(c in "0123456789abcdefABCDEF" for c in voice_id)
+        is_local_file = voice_id.lower().endswith((".wav", ".mp3"))
+        if is_omnivoice_hex or is_local_file:
+            provider = "omnivoice"
+        elif voice_id.startswith("vi_vn_") or voice_id.startswith("BV07"):
+            provider = "tiktok"
+            if voice_id == "vi_vn_001":
+                voice_id = "BV075_streaming"
+            elif voice_id == "vi_vn_002":
+                voice_id = "BV074_streaming"
+
+    if not voice_id and provider != "omnivoice":
         raise ValueError("voice_id is required. Use --voice male/female or set VIETNAMESE_VOICEID_MALE/FEMALE in .env")
-    if not config.VIETNAMESE_API_KEY:
+    if provider != "omnivoice" and not config.VIETNAMESE_API_KEY:
         raise ValueError("VIETNAMESE_API_KEY / LARVOICE_API_KEY not set in .env")
 
     max_speed = config.VIETNAMESE_TTS_MAX_SPEED
-    provider = getattr(config, "TTS_PROVIDER", "lucylab")
     raw_download_path = output_path + ".download"
 
     chars_per_sec_normal = 19.0
@@ -354,6 +492,81 @@ def synthesize_segment_vi(
         if target_duration
         else f"TTS request ({provider}): {len(text_vi)} chars, speed={speed}"
     )
+
+    if provider == "omnivoice":
+        try:
+            base_url = _ensure_local_omnivoice_server_running()
+            payload = {
+                "text": text_vi,
+                "voice_id": voice_id,
+                "speed": speed,
+                "target_duration": target_duration
+            }
+            response = requests.post(f"{base_url}/synthesize", json=payload, timeout=90)
+            if response.status_code != 200:
+                raise RuntimeError(f"Server returned status code {response.status_code}: {response.text}")
+                
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+                
+            if not is_valid_audio_file(output_path):
+                raise RuntimeError("Generated file is not a valid audio payload")
+                
+            audio = AudioSegment.from_file(output_path)
+            actual_duration = len(audio) / 1000.0
+            
+            return {
+                "path": output_path,
+                "actual_duration": round(actual_duration, 3),
+                "speed_adjusted": speed != 1.0,
+                "rate_applied": f"{speed}x",
+                "provider": "omnivoice",
+                "voice_id": voice_id,
+                "job_id": "local",
+                "audio_url": "local",
+                "retry_count": 0,
+                "status": "generated",
+            }
+        except Exception as exc:
+            raise TTSSegmentError(
+                f"Local OmniVoice synthesis failed: {exc}",
+                provider="omnivoice",
+                job_id="local",
+            ) from exc
+
+    if provider == "tiktok":
+        try:
+            audio_bytes = _call_tiktok(text_vi, voice_id)
+            with open(raw_download_path, "wb") as f:
+                f.write(audio_bytes)
+                
+            audio, actual_duration = _render_downloaded_audio_to_wav(raw_download_path, output_path)
+            if os.path.exists(raw_download_path):
+                os.remove(raw_download_path)
+                
+            return {
+                "path": output_path,
+                "actual_duration": round(actual_duration, 3),
+                "speed_adjusted": False,
+                "rate_applied": "1.0x",
+                "provider": "tiktok",
+                "voice_id": voice_id,
+                "job_id": "tiktok",
+                "audio_url": "tiktok",
+                "retry_count": 0,
+                "status": "generated",
+            }
+        except Exception as exc:
+            if os.path.exists(raw_download_path):
+                try:
+                    os.remove(raw_download_path)
+                except OSError:
+                    pass
+            raise TTSSegmentError(
+                f"TikTok TTS synthesis failed: {exc}",
+                provider="tiktok",
+                job_id="tiktok",
+            ) from exc
 
     job_id: str | None = None
     audio_url: str | None = None

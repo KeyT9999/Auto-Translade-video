@@ -71,3 +71,23 @@ def test_run_batch_pipeline_success(monkeypatch):
     })
     assert response.status_code == 200
     assert "task_id" in response.json()
+
+
+def test_get_voice_preview_endpoint(monkeypatch):
+    called_synthesize = False
+    
+    def mock_synthesize(text_vi, output_path, voice_id):
+        nonlocal called_synthesize
+        called_synthesize = True
+        with open(output_path, "wb") as f:
+            f.write(b"dummy wav data")
+        return {"path": output_path, "status": "generated"}
+        
+    import src.synthesizer_vi
+    monkeypatch.setattr(src.synthesizer_vi, "synthesize_segment_vi", mock_synthesize)
+    
+    response = client.get("/api/voices/preview/female")
+    assert response.status_code == 200
+    assert response.content == b"dummy wav data"
+    assert called_synthesize is True
+

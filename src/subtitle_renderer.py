@@ -273,55 +273,138 @@ def _escape_ffmpeg_path(path: str) -> str:
 
 def render_video_with_cover(
     input_video: str,
-    ass_path: str,
+    ass_path: str | None,
     output_path: str,
     cover_config: dict | None = None,
+    logo_config: dict | None = None,
 ) -> str:
-    """Render video with optional subtitle cover overlay and ASS subtitles.
+    """Render video with optional subtitle cover overlay, ASS subtitles, and logo overlay.
 
     Args:
         input_video: Path to input video file.
-        ass_path: Path to ASS subtitle file.
+        ass_path: Optional path to ASS subtitle file.
         output_path: Path for the output video.
         cover_config: Optional dict with keys:
             - cover_original_subtitles: bool (default False)
             - mask_y_percent: float (0.0-1.0, default from config)
             - mask_height_percent: float (0.0-1.0, default from config)
             - mask_opacity: float (0.0-1.0, default from config)
+        logo_config: Optional dict with keys:
+            - logo_path: str | None
+            - logo_position: str
+            - logo_width: int | None
 
     Returns:
         Path to the rendered output video.
     """
     if not os.path.exists(input_video):
         raise FileNotFoundError(f"Video not found: {input_video}")
-    if not os.path.exists(ass_path):
+    if ass_path and not os.path.exists(ass_path):
         raise FileNotFoundError(f"ASS subtitles not found: {ass_path}")
 
     cfg = cover_config or {}
-    vf_string = _build_video_filter_chain(ass_path, cfg)
-    if cfg.get("cover_original_subtitles", False):
-        logger.info(
-            "Applying subtitle cover: y=%.0f%% h=%.0f%% opacity=%.2f extra_h=%.0f%% extra_opacity=%.2f",
-            cfg.get("mask_y_percent", config.SUBTITLE_MASK_Y_PERCENT) * 100,
-            cfg.get("mask_height_percent", config.SUBTITLE_MASK_HEIGHT_PERCENT) * 100,
-            cfg.get("mask_opacity", config.SUBTITLE_MASK_OPACITY),
-            cfg.get("mask_extra_height_percent", config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT) * 100,
-            cfg.get("mask_extra_opacity", config.SUBTITLE_MASK_EXTRA_OPACITY),
-        )
+    logo_path = logo_config.get("logo_path") if logo_config else None
+    has_logo = logo_path and os.path.exists(logo_path)
 
-    cmd = [
-        "ffmpeg",
-        "-i", input_video,
-        "-vf", vf_string,
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "22",
-        "-c:a", "copy",
-        "-y",
-        output_path,
-    ]
+    if has_logo:
+        # Build filter complex
+        filter_nodes = []
+        sub_filters = []
+        if cfg.get("cover_original_subtitles", False):
+            logger.info(
+                "Applying subtitle cover: y=%.0f%% h=%.0f%% opacity=%.2f extra_h=%.0f%% extra_opacity=%.2f",
+                cfg.get("mask_y_percent", config.SUBTITLE_MASK_Y_PERCENT) * 100,
+                cfg.get("mask_height_percent", config.SUBTITLE_MASK_HEIGHT_PERCENT) * 100,
+                cfg.get("mask_opacity", config.SUBTITLE_MASK_OPACITY),
+                cfg.get("mask_extra_height_percent", config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT) * 100,
+                cfg.get("mask_extra_opacity", config.SUBTITLE_MASK_EXTRA_OPACITY),
+            )
+            sub_filters.extend(_build_cover_filters(cfg))
+        if ass_path:
+            ass_escaped = _escape_ffmpeg_path(os.path.abspath(ass_path))
+            sub_filters.append(f"ass='{ass_escaped}'")
 
-    logger.info(f"Rendering subtitled video → {output_path}")
+        if sub_filters:
+            filter_nodes.append(f"[0:v]{','.join(sub_filters)}[v_base]")
+            base_video_label = "[v_base]"
+        else:
+            base_video_label = "[0:v]"
+
+        logo_width = logo_config.get("logo_width")
+        logo_position = logo_config.get("logo_position", "top_right")
+
+        # Map position to expression
+        if logo_position in ("top_left", "top-left"):
+            pos_expr = "10:10"
+        elif logo_position in ("bottom_left", "bottom-left"):
+            pos_expr = "10:main_h-overlay_h-10"
+        elif logo_position in ("bottom_right", "bottom-right"):
+            pos_expr = "main_w-overlay_w-10:main_h-overlay_h-10"
+        else:
+            pos_expr = "main_w-overlay_w-10:10"
+
+        if logo_width:
+            filter_nodes.append(f"[1:v]scale={logo_width}:-1[v_logo]")
+        else:
+            filter_nodes.append(f"[1:v]null[v_logo]")
+
+        filter_nodes.append(f"{base_video_label}[v_logo]overlay={pos_expr}[v_out]")
+        final_video_label = "[v_out]"
+
+        cmd = [
+            "ffmpeg",
+            "-i", input_video,
+            "-i", logo_path,
+            "-filter_complex", ";".join(filter_nodes),
+            "-map", final_video_label,
+            "-map", "0:a?",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "22",
+            "-c:a", "copy",
+            "-y",
+            output_path,
+        ]
+        logger.info(f"Rendering video with cover, subtitles, and logo overlay ({logo_path}) → {output_path}")
+    else:
+        # Default behavior: use simple video filter chain (vf)
+        if ass_path:
+            vf_string = _build_video_filter_chain(ass_path, cfg)
+        else:
+            vf_filters = _build_cover_filters(cfg)
+            vf_string = ",".join(vf_filters) if vf_filters else None
+
+        if cfg.get("cover_original_subtitles", False):
+            logger.info(
+                "Applying subtitle cover: y=%.0f%% h=%.0f%% opacity=%.2f extra_h=%.0f%% extra_opacity=%.2f",
+                cfg.get("mask_y_percent", config.SUBTITLE_MASK_Y_PERCENT) * 100,
+                cfg.get("mask_height_percent", config.SUBTITLE_MASK_HEIGHT_PERCENT) * 100,
+                cfg.get("mask_opacity", config.SUBTITLE_MASK_OPACITY),
+                cfg.get("mask_extra_height_percent", config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT) * 100,
+                cfg.get("mask_extra_opacity", config.SUBTITLE_MASK_EXTRA_OPACITY),
+            )
+
+        cmd = [
+            "ffmpeg",
+            "-i", input_video,
+        ]
+        if vf_string:
+            cmd.extend(["-vf", vf_string])
+            cmd.extend([
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "22",
+            ])
+        else:
+            cmd.extend(["-c:v", "copy"])
+
+        cmd.extend([
+            "-c:a", "copy",
+            "-y",
+            output_path,
+        ])
+        logger.info(f"Rendering subtitled video (no logo) → {output_path}")
+
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
@@ -336,3 +419,4 @@ def render_video_with_cover(
 
     logger.info(f"Subtitled video rendered: {output_path}")
     return output_path
+

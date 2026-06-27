@@ -50,6 +50,10 @@ class BatchJob:
     published_urls: dict[str, str | None] = field(
         default_factory=lambda: {"facebook": None, "youtube": None}
     )
+    output_playback_speed: float = 1.0
+    speed_adjusted: bool = False
+    rendered_video_original_speed: str | None = None
+    rendered_video_final: str | None = None
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "BatchJob":
@@ -66,6 +70,10 @@ class BatchJob:
             error_message=payload.get("error_message"),
             rendered_video=payload.get("rendered_video"),
             published_urls=_normalize_published_urls(payload.get("published_urls")),
+            output_playback_speed=float(payload.get("output_playback_speed", 1.0)),
+            speed_adjusted=bool(payload.get("speed_adjusted", False)),
+            rendered_video_original_speed=payload.get("rendered_video_original_speed"),
+            rendered_video_final=payload.get("rendered_video_final"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -337,6 +345,10 @@ def build_batch_report(batch: BatchState) -> BatchReport:
                 "error_step": job.error_step,
                 "error_type": job.error_type,
                 "error_message": job.error_message,
+                "output_playback_speed": job.output_playback_speed,
+                "speed_adjusted": job.speed_adjusted,
+                "rendered_video_original_speed": job.rendered_video_original_speed,
+                "rendered_video_final": job.rendered_video_final,
             }
         )
 
@@ -752,6 +764,20 @@ class BatchRunner:
         job.error_message = result.error_message
         job.published_urls = _normalize_published_urls(result.published_urls)
         job.status = self._status_from_pipeline_result(batch, job, result)
+
+        if job.output_dir:
+            rep_path = os.path.join(job.output_dir, "report.json")
+            if os.path.exists(rep_path):
+                try:
+                    with open(rep_path, "r", encoding="utf-8") as handle:
+                        rep_data = json.load(handle)
+                    job.output_playback_speed = float(rep_data.get("output_playback_speed", 1.0))
+                    job.speed_adjusted = bool(rep_data.get("speed_adjusted", False))
+                    files = rep_data.get("files", {})
+                    job.rendered_video_original_speed = files.get("rendered_video_original_speed")
+                    job.rendered_video_final = files.get("rendered_video_final")
+                except Exception as exc:
+                    logger.warning("Failed to parse speed details from job report.json: %s", exc)
 
     def _status_from_pipeline_result(
         self,

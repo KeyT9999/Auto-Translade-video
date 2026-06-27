@@ -32,11 +32,25 @@ LARVOICE_VOICEID_MALE = os.getenv("LARVOICE_VOICEID_MALE", "1")
 LARVOICE_VOICEID_FEMALE = os.getenv("LARVOICE_VOICEID_FEMALE", "39")
 
 # Route default voice IDs and API key based on active provider
+OMNIVOICE_LOCAL_PORT = int(os.getenv("OMNIVOICE_LOCAL_PORT", "3901"))
+OMNIVOICE_STUDIO_PATH = os.getenv("OMNIVOICE_STUDIO_PATH", "d:/MMO/OmniVoice-Studio")
+TIKTOK_SESSION_ID = os.getenv("TIKTOK_SESSION_ID", "").strip()
+
 if TTS_PROVIDER == "larvoice":
     VIETNAMESE_API_KEY = os.getenv("LARVOICE_API_KEY", "")
     VIETNAMESE_VOICEID_MALE = os.getenv("LARVOICE_VOICEID_MALE", "1")
     VIETNAMESE_VOICEID_FEMALE = os.getenv("LARVOICE_VOICEID_FEMALE", "39")
     VOICE_NARRATOR = os.getenv("VOICE_NARRATOR", "1").strip()
+elif TTS_PROVIDER == "omnivoice":
+    VIETNAMESE_API_KEY = "local_offline"
+    VIETNAMESE_VOICEID_MALE = os.getenv("VIETNAMESE_VOICEID_MALE", "")
+    VIETNAMESE_VOICEID_FEMALE = os.getenv("VIETNAMESE_VOICEID_FEMALE", "")
+    VOICE_NARRATOR = os.getenv("VOICE_NARRATOR", "").strip()
+elif TTS_PROVIDER == "tiktok":
+    VIETNAMESE_API_KEY = TIKTOK_SESSION_ID
+    VIETNAMESE_VOICEID_MALE = os.getenv("VIETNAMESE_VOICEID_MALE", "BV075_streaming")
+    VIETNAMESE_VOICEID_FEMALE = os.getenv("VIETNAMESE_VOICEID_FEMALE", "BV074_streaming")
+    VOICE_NARRATOR = os.getenv("VOICE_NARRATOR", "BV074_streaming").strip()
 else:
     # Default to LucyLab
     VIETNAMESE_API_KEY = os.getenv("VIETNAMESE_API_KEY", "")
@@ -240,4 +254,26 @@ BATCH_OUTPUT_DIR = os.getenv("BATCH_OUTPUT_DIR", "./output/batches").strip() or 
 BATCH_WRITE_MARKDOWN_REPORT = _get_bool_env("BATCH_WRITE_MARKDOWN_REPORT", True)
 BATCH_WRITE_JSON_REPORT = _get_bool_env("BATCH_WRITE_JSON_REPORT", True)
 BATCH_AUTO_PUBLISH_ENABLED = _get_bool_env("BATCH_AUTO_PUBLISH_ENABLED", False)
+
+# ── Subtitle Timing Configuration ──
+# Khoảng lặng đệm ở cuối giọng đọc AI (giúp phụ đề biến mất khớp khi giọng đọc dứt câu)
+SUBTITLE_SILENT_PADDING = float(os.getenv("SUBTITLE_SILENT_PADDING", "0.5"))
+
+# Logo Overlay Config
+LOGO_PATH = os.getenv("LOGO_PATH", "")
+LOGO_POSITION = os.getenv("LOGO_POSITION", "top_right")
+_logo_width_env = os.getenv("LOGO_WIDTH", "")
+LOGO_WIDTH = int(_logo_width_env) if _logo_width_env and _logo_width_env.strip().isdigit() else None
+
+# Playback Speed Config
+OUTPUT_PLAYBACK_SPEED = float(os.getenv("OUTPUT_PLAYBACK_SPEED", "1.0"))
+_allowed_speeds_str = os.getenv("OUTPUT_PLAYBACK_SPEED_OPTIONS", "1.0,1.1,1.2,1.3")
+OUTPUT_PLAYBACK_SPEED_OPTIONS = [float(x.strip()) for x in _allowed_speeds_str.split(",") if x.strip()]
+OUTPUT_SPEED_KEEP_ORIGINAL_RENDER = _get_bool_env("OUTPUT_SPEED_KEEP_ORIGINAL_RENDER", True)
+OUTPUT_SPEED_SUFFIX_FORMAT = os.getenv("OUTPUT_SPEED_SUFFIX_FORMAT", "_{speed}x")
+
+if OUTPUT_PLAYBACK_SPEED not in OUTPUT_PLAYBACK_SPEED_OPTIONS:
+    raise ValueError(f"OUTPUT_PLAYBACK_SPEED {OUTPUT_PLAYBACK_SPEED} is not in allowed options {OUTPUT_PLAYBACK_SPEED_OPTIONS}")
+
+
 

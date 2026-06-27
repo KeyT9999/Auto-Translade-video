@@ -188,15 +188,33 @@ def get_voice_id_for_segment(seg: dict, voice_id_default: str, voice_map: dict |
     if speaker == "NARRATOR" and hasattr(config, "VOICE_NARRATOR") and config.VOICE_NARRATOR:
         return config.VOICE_NARRATOR
 
-    # 4. Fallback based on gender
-    if gender == "female":
-        vid = getattr(config, "VIETNAMESE_VOICEID_FEMALE", "") or voice_id_default
-        if vid:
-            return vid
-    elif gender == "male":
-        vid = getattr(config, "VIETNAMESE_VOICEID_MALE", "") or voice_id_default
-        if vid:
-            return vid
+    # 4. Fallback based on gender (only if the user chose a default male/female voice,
+    # otherwise we use the custom voice selected by the user).
+    default_females = {
+        "female",
+        getattr(config, "VIETNAMESE_VOICEID_FEMALE", ""),
+        getattr(config, "LARVOICE_VOICEID_FEMALE", ""),
+    }
+    default_males = {
+        "male",
+        getattr(config, "VIETNAMESE_VOICEID_MALE", ""),
+        getattr(config, "LARVOICE_VOICEID_MALE", ""),
+    }
+    is_default_generic_voice = (
+        not voice_id_default
+        or voice_id_default in default_females
+        or voice_id_default in default_males
+    )
+
+    if is_default_generic_voice:
+        if gender == "female":
+            vid = getattr(config, "VIETNAMESE_VOICEID_FEMALE", "") or voice_id_default
+            if vid:
+                return vid
+        elif gender == "male":
+            vid = getattr(config, "VIETNAMESE_VOICEID_MALE", "") or voice_id_default
+            if vid:
+                return vid
 
     # 5. Ultimate fallback
     return voice_id_default

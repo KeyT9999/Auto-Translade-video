@@ -140,7 +140,7 @@ Hệ thống được thiết kế theo cấu trúc modular hóa bằng ngôn ng
     *   `Google GenAI SDK (Gemini 2.0 Flash)`: Sử dụng dịch thuật ngữ cảnh phức tạp và tạo gợi ý metadata SEO.
     *   `Groq LLM (Llama 3.3 70B Versatile)`: Hoạt động ở chế độ JSON để fallback dịch thuật và nhận diện nhân vật nếu Gemini lỗi quota.
 *   **Bộ tổng hợp giọng nói (TTS)**:
-    *   **Tiếng Việt**: Tích hợp các nhà cung cấp nội địa nổi tiếng gồm **LucyLab**, **LarVoice**, và **Vivibe API**. Hỗ trợ cả giọng đọc nam/nữ của nhiều vùng miền.
+    *   **Tiếng Việt**: Tích hợp các nhà cung cấp nổi tiếng gồm **LucyLab**, **LarVoice**, **Vivibe API**, và **TikTok TTS** (hỗ trợ giọng đọc "Cô gái hoạt ngôn" `vi_vn_002` và giọng nữ tiêu chuẩn `vi_vn_001`). Hỗ trợ cả giọng đọc nam/nữ của nhiều vùng miền.
     *   **Tiếng Nhật**: Tích hợp **Azure Neural TTS** (mặc định giọng `ja-JP-KeitaNeural` và `ja-JP-NanamiNeural`) hỗ trợ giọng đọc biểu cảm chất lượng phòng thu.
 *   **Trình tải video**:
     *   `yt-dlp`: Công cụ CLI hàng đầu để tải video và phụ đề từ hơn 1000 trang web.
@@ -241,11 +241,12 @@ Mở tệp `.env` vừa tạo và điền các API Key tương ứng. Dưới đ
 | `GOOGLE_API_KEY` | `AIzaSyxxxx...` | Khuyến nghị | Dịch thuật chất lượng cao (Gemini 2.0 Flash) & Sinh Metadata SEO |
 | `AZURE_SPEECH_KEY` | `xxxx...` | Tùy chọn | Dùng để chạy ASR dự phòng (Fallback) và lồng tiếng Nhật (Azure TTS) |
 | `AZURE_SPEECH_REGION` | `japaneast` | Tùy chọn | Khu vực đặt tài nguyên Azure Speech Service |
-| `TTS_PROVIDER` | `lucylab` / `larvoice` | Bắt buộc | Nhà cung cấp giọng đọc tiếng Việt chính (`lucylab` hoặc `larvoice`) |
-| `VIETNAMESE_API_KEY` | `Bearer xxxx...` | Bắt buộc | Token xác thực cho LucyLab hoặc LarVoice TTS |
-| `VIETNAMESE_VOICEID_MALE` | `61fxxxx...` | Bắt buộc | ID giọng đọc Nam tiếng Việt mặc định |
-| `VIETNAMESE_VOICEID_FEMALE` | `61fxxxx...` | Bắt buộc | ID giọng đọc Nữ tiếng Việt mặc định |
-| `VOICE_NARRATOR` | `61fxxxx...` | Tùy chọn | ID giọng đọc dành riêng cho người dẫn chuyện (Narrator) |
+| `TTS_PROVIDER` | `lucylab` / `larvoice` / `tiktok` | Bắt buộc | Nhà cung cấp giọng đọc tiếng Việt chính (`lucylab`, `larvoice`, hoặc `tiktok`) |
+| `VIETNAMESE_API_KEY` | `Bearer xxxx...` | Bắt buộc | Token xác thực cho LucyLab hoặc LarVoice TTS (không bắt buộc đối với `tiktok`) |
+| `TIKTOK_SESSION_ID` | `sessionid_cookie` | Tùy chọn | Cookie `sessionid` từ trình duyệt sau khi đăng nhập TikTok (bắt buộc khi chọn provider là `tiktok` để tránh lỗi) |
+| `VIETNAMESE_VOICEID_MALE` | `vi_vn_001` | Bắt buộc | ID giọng đọc Nam tiếng Việt mặc định (với TikTok là `vi_vn_001`) |
+| `VIETNAMESE_VOICEID_FEMALE` | `vi_vn_002` | Bắt buộc | ID giọng đọc Nữ tiếng Việt mặc định (với TikTok là `vi_vn_002` - giọng Cô gái hoạt ngôn) |
+| `VOICE_NARRATOR` | `vi_vn_002` | Tùy chọn | ID giọng đọc dành riêng cho người dẫn chuyện (Narrator) |
 | `VOICE_CHARACTER_MAP` | `HERO:id1,VILLAIN:id2` | Tùy chọn | Bản đồ cố định gán nhãn nhân vật (chữ HOA) sang ID giọng đọc |
 | `AUDIO_SLOW_FACTOR` | `0.82` | Mặc định | Tỉ lệ giảm tốc giọng Việt (0.82 nghĩa là giảm 18% để nghe tự nhiên hơn) |
 | `AUDIO_TARGET_LUFS` | `-15.0` | Mặc định | Độ lớn âm thanh đích (LUFS) sau khi mix để đăng lên YouTube/FB |

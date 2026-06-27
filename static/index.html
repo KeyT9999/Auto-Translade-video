@@ -1231,9 +1231,14 @@ https://www.tiktok.com/@..."></textarea>
                 <!-- Voice selection -->
                 <div class="form-group" id="voice-config-group">
                     <label class="form-label">Giọng đọc ưu tiên</label>
-                    <div class="option-card-group" id="voice-group">
-                        <button type="button" class="option-btn active" data-val="female">Nữ</button>
-                        <button type="button" class="option-btn" data-val="male">Nam</button>
+                    <div style="display: flex; gap: var(--spacing-8); align-items: center; width: 100%;">
+                        <select id="voice-select" class="select-custom" style="flex: 1; height: 42px; min-height: 42px;">
+                            <option value="female" selected>Giọng Nữ mặc định</option>
+                            <option value="male">Giọng Nam mặc định</option>
+                        </select>
+                        <button type="button" class="option-btn" id="btn-preview-main" style="width: auto; height: 42px; padding: 0 var(--spacing-12); font-size: 13px; margin: 0; white-space: nowrap; border-radius: var(--border-radius-8);">
+                            ▶ Nghe thử
+                        </button>
                     </div>
                 </div>
 
@@ -1246,6 +1251,17 @@ https://www.tiktok.com/@..."></textarea>
                         <button type="button" class="option-btn" data-val="none">Không</button>
                     </div>
                 </div>
+            </div>
+
+            <!-- Playback Speed Select -->
+            <div class="form-group" style="margin-top: var(--spacing-8); margin-bottom: var(--spacing-8);">
+                <label class="form-label main-focus-label" for="output-playback-speed-select">Tốc độ video đầu ra (Playback Speed)</label>
+                <select id="output-playback-speed-select" class="select-custom" style="width: 100%;">
+                    <option value="1.0" selected>1.0x (Bình thường)</option>
+                    <option value="1.1">1.1x (Nhanh nhẹ)</option>
+                    <option value="1.2">1.2x (Nhanh vừa)</option>
+                    <option value="1.3">1.3x (Nhanh hơn)</option>
+                </select>
             </div>
 
             <!-- Subtitle Config Group (only visible in subtitle_only mode) -->
@@ -1280,6 +1296,36 @@ https://www.tiktok.com/@..."></textarea>
                     <input type="range" id="mask-opacity-range" min="0.3" max="0.9" step="0.05" value="0.55" style="width: 100%; accent-color: var(--color-active-border);">
                 </div>
             </div>
+
+            <!-- Logo Config Group (visible in both modes) -->
+            <div class="form-group" id="logo-config-group" style="margin-top: var(--spacing-8);">
+                <label class="form-label main-focus-label">Cấu hình chèn Logo</label>
+                <div class="form-group">
+                    <label class="form-label" for="logo-path-input">Tệp tin Logo (.png, .jpg)</label>
+                    <div style="display: flex; gap: var(--spacing-8);">
+                        <input type="text" id="logo-path-input" class="input-text" placeholder="Ví dụ: D:\inputs\logo.png" style="flex: 1;">
+                        <button type="button" class="btn-run" style="width: auto; min-width: 100px; margin-top: 0;" onclick="document.getElementById('logo-file-picker').click()">Duyệt...</button>
+                        <input type="file" id="logo-file-picker" style="display: none;" accept="image/*" onchange="uploadLogoFile(this)">
+                    </div>
+                    <div class="helper-text">Bạn có thể chọn tệp logo từ máy tính hoặc tự điền đường dẫn cục bộ.</div>
+                </div>
+                <div class="options-grid">
+                    <div class="form-group">
+                        <label class="form-label" for="logo-position-select">Vị trí Logo</label>
+                        <select id="logo-position-select" class="select-custom">
+                            <option value="top_left">Trên bên trái (Top-Left)</option>
+                            <option value="top_right" selected>Trên bên phải (Top-Right)</option>
+                            <option value="bottom_left">Dưới bên trái (Bottom-Left)</option>
+                            <option value="bottom_right">Dưới bên phái (Bottom-Right)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="logo-width-input">Chiều rộng Logo (pixel)</label>
+                        <input type="number" id="logo-width-input" class="input-text" value="150" min="30" max="800" step="10">
+                    </div>
+                </div>
+            </div>
+
             <!-- Advanced settings Accordion -->
             <div class="accordion-header" onclick="toggleAdvancedSettings()">
                 <span>Thiết lập nâng cao</span>
@@ -1632,9 +1678,80 @@ https://www.tiktok.com/@..."></textarea>
     let activeTaskKind = "single";
     let activeTaskId = null;
     let pollIntervalId = null;
+    let availableVoices = [];
+    const audioPreview = new Audio();
 
-    // Button groups
-    const voiceBtns = document.querySelectorAll("#voice-group button");
+    async function loadAvailableVoices() {
+        try {
+            const resp = await fetch("/api/voices");
+            if (!resp.ok) throw new Error("Không thể tải danh sách giọng đọc");
+            const data = await resp.json();
+            availableVoices = data.voices;
+            
+            const voiceSelect = document.getElementById("voice-select");
+            if (voiceSelect) {
+                voiceSelect.innerHTML = "";
+                availableVoices.forEach(voice => {
+                    const opt = document.createElement("option");
+                    opt.value = voice.id;
+                    opt.textContent = voice.name;
+                    if (voice.id === "female") opt.selected = true;
+                    voiceSelect.appendChild(opt);
+                });
+                activeVoice = voiceSelect.value;
+                voiceSelect.addEventListener("change", (e) => {
+                    activeVoice = e.target.value;
+                });
+            }
+        } catch (err) {
+            console.error("Error loading voices:", err);
+            showToast("Lỗi tải danh sách giọng đọc: " + err.message, "error");
+        }
+    }
+
+    // Main preview button
+    const btnPreviewMain = document.getElementById("btn-preview-main");
+    if (btnPreviewMain) {
+        btnPreviewMain.addEventListener("click", async () => {
+            const voiceSelect = document.getElementById("voice-select");
+            if (!voiceSelect) return;
+            const voiceId = voiceSelect.value;
+            
+            // Toggle play/stop if already playing this voice
+            if (!audioPreview.paused && audioPreview.src.includes(`/api/voices/preview/${encodeURIComponent(voiceId)}`)) {
+                audioPreview.pause();
+                btnPreviewMain.textContent = "▶ Nghe thử";
+                return;
+            }
+            
+            // Reset all preview buttons across the UI
+            document.querySelectorAll(".character-voice-select + button").forEach(b => b.textContent = "▶ Nghe thử");
+            btnPreviewMain.disabled = true;
+            btnPreviewMain.textContent = "⌛ Đang tạo...";
+            
+            try {
+                audioPreview.src = `/api/voices/preview/${encodeURIComponent(voiceId)}?t=${Date.now()}`;
+                audioPreview.oncanplaythrough = () => {
+                    audioPreview.play();
+                    btnPreviewMain.disabled = false;
+                    btnPreviewMain.textContent = "⏹ Dừng";
+                };
+                audioPreview.onerror = () => {
+                    btnPreviewMain.disabled = false;
+                    btnPreviewMain.textContent = "▶ Nghe thử";
+                    showToast("Lỗi phát âm thanh nghe thử.", "error");
+                };
+                audioPreview.onended = () => {
+                    btnPreviewMain.textContent = "▶ Nghe thử";
+                };
+            } catch (err) {
+                btnPreviewMain.disabled = false;
+                btnPreviewMain.textContent = "▶ Nghe thử";
+                showToast("Lỗi kết nối: " + err.message, "error");
+            }
+        });
+    }
+
     const bgBtns = document.querySelectorAll("#bg-group button");
     const modeBtns = document.querySelectorAll("#mode-group button");
     const sourceModeBtns = document.querySelectorAll("#source-mode-group button");
@@ -1687,14 +1804,6 @@ https://www.tiktok.com/@..."></textarea>
         batchLinksEl.addEventListener("paste", () => setTimeout(handleBatchLinksChange, 0));
         updateBatchLinkCounter();
     }
-
-    voiceBtns.forEach(btn => {
-        btn.addEventListener("click", () => {
-            voiceBtns.forEach(b => b.classList.remove("active"));
-            btn.classList.add("active");
-            activeVoice = btn.getAttribute("data-val");
-        });
-    });
 
     bgBtns.forEach(btn => {
         btn.addEventListener("click", () => {
@@ -1869,7 +1978,11 @@ https://www.tiktok.com/@..."></textarea>
             cover_original_subtitles: document.getElementById("cover-original-subtitles").checked,
             subtitle_style: document.getElementById("subtitle-style-select").value,
             subtitle_font_size: parseInt(document.getElementById("subtitle-font-size-select").value),
-            mask_opacity: parseFloat(document.getElementById("mask-opacity-range").value)
+            mask_opacity: parseFloat(document.getElementById("mask-opacity-range").value),
+            logo_path: document.getElementById("logo-path-input").value.trim() || null,
+            logo_position: document.getElementById("logo-position-select").value,
+            logo_width: parseInt(document.getElementById("logo-width-input").value) || null,
+            output_playback_speed: parseFloat(document.getElementById("output-playback-speed-select").value)
         };
 
         let endpoint = "/api/run";
@@ -1977,41 +2090,98 @@ https://www.tiktok.com/@..."></textarea>
             selectContainer.style.flexDirection = "column";
             selectContainer.style.gap = "var(--spacing-4)";
 
+            const selectWrapper = document.createElement("div");
+            selectWrapper.style.display = "flex";
+            selectWrapper.style.gap = "var(--spacing-8)";
+            selectWrapper.style.alignItems = "center";
+            selectWrapper.style.width = "100%";
+
             const select = document.createElement("select");
             select.className = "select-custom character-voice-select";
+            select.style.flex = "1";
 
-            const isMale = sp.gender === "male";
+            // Render availableVoices
+            availableVoices.forEach(voice => {
+                const opt = document.createElement("option");
+                opt.value = voice.id;
+                opt.textContent = voice.name;
+                
+                // Smart default based on gender detected
+                if (sp.gender === "male" && voice.id === defaultMale) opt.selected = true;
+                else if (sp.gender === "female" && voice.id === defaultFemale) opt.selected = true;
+                else if (sp.gender !== "male" && sp.gender !== "female" && voice.id === defaultFemale) opt.selected = true;
+                
+                select.appendChild(opt);
+            });
 
-            const optMale = document.createElement("option");
-            optMale.value = defaultMale;
-            optMale.textContent = `Giọng Nam (${defaultMale ? defaultMale.substring(0, 6) + '...' : 'N/A'})`;
-            if (isMale) optMale.selected = true;
-
-            const optFemale = document.createElement("option");
-            optFemale.value = defaultFemale;
-            optFemale.textContent = `Giọng Nữ (${defaultFemale ? defaultFemale.substring(0, 6) + '...' : 'N/A'})`;
-            if (!isMale && sp.gender === "female") optFemale.selected = true;
-
+            // Nhập Voice ID tùy chọn
             const optCustom = document.createElement("option");
             optCustom.value = "custom";
             optCustom.textContent = "Nhập Voice ID tùy chọn...";
-            if (!isMale && sp.gender !== "female") optCustom.selected = true;
-
-            select.appendChild(optFemale);
-            select.appendChild(optMale);
             select.appendChild(optCustom);
+
+            // Preview button for this speaker dropdown
+            const btnPreview = document.createElement("button");
+            btnPreview.type = "button";
+            btnPreview.className = "option-btn";
+            btnPreview.style.width = "auto";
+            btnPreview.style.height = "38px";
+            btnPreview.style.margin = "0";
+            btnPreview.style.fontSize = "12px";
+            btnPreview.style.padding = "0 var(--spacing-8)";
+            btnPreview.style.whiteSpace = "nowrap";
+            btnPreview.textContent = "▶ Nghe thử";
+
+            selectWrapper.appendChild(select);
+            selectWrapper.appendChild(btnPreview);
 
             const customInput = document.createElement("input");
             customInput.type = "text";
             customInput.className = "input-text custom-voice-input";
-            customInput.placeholder = "LucyLab Voice ID";
+            customInput.placeholder = "LucyLab/TikTok Voice ID hoặc file .wav";
             customInput.style.display = select.value === "custom" ? "block" : "none";
+            customInput.style.marginTop = "var(--spacing-4)";
 
             select.addEventListener("change", (e) => {
-                customInput.style.display = e.target.value === "custom" ? "block" : "none";
+                const isCustom = e.target.value === "custom";
+                customInput.style.display = isCustom ? "block" : "none";
+                btnPreview.style.display = isCustom ? "none" : "block";
             });
 
-            selectContainer.appendChild(select);
+            btnPreview.addEventListener("click", () => {
+                const voiceId = select.value;
+                if (voiceId === "custom") return;
+
+                if (!audioPreview.paused && audioPreview.src.includes(`/api/voices/preview/${encodeURIComponent(voiceId)}`)) {
+                    audioPreview.pause();
+                    btnPreview.textContent = "▶ Nghe thử";
+                    return;
+                }
+
+                // Reset all preview buttons
+                document.querySelectorAll(".character-voice-select + button").forEach(b => b.textContent = "▶ Nghe thử");
+                if (btnPreviewMain) btnPreviewMain.textContent = "▶ Nghe thử";
+
+                btnPreview.disabled = true;
+                btnPreview.textContent = "⌛...";
+
+                audioPreview.src = `/api/voices/preview/${encodeURIComponent(voiceId)}?t=${Date.now()}`;
+                audioPreview.oncanplaythrough = () => {
+                    audioPreview.play();
+                    btnPreview.disabled = false;
+                    btnPreview.textContent = "⏹";
+                };
+                audioPreview.onerror = () => {
+                    btnPreview.disabled = false;
+                    btnPreview.textContent = "▶ Nghe thử";
+                    showToast("Lỗi nghe thử.", "error");
+                };
+                audioPreview.onended = () => {
+                    btnPreview.textContent = "▶ Nghe thử";
+                };
+            });
+
+            selectContainer.appendChild(selectWrapper);
             selectContainer.appendChild(customInput);
 
             row.appendChild(header);
@@ -2085,7 +2255,10 @@ https://www.tiktok.com/@..."></textarea>
             publish_youtube: document.getElementById("pub-youtube").checked,
             publish_facebook: document.getElementById("pub-facebook").checked,
             burn_subtitles: document.getElementById("burn-subtitles").checked,
-            mode: activeMode
+            mode: activeMode,
+            logo_path: document.getElementById("logo-path-input").value.trim() || null,
+            logo_position: document.getElementById("logo-position-select").value,
+            logo_width: parseInt(document.getElementById("logo-width-input").value) || null
         };
 
         try {
@@ -2117,6 +2290,37 @@ https://www.tiktok.com/@..."></textarea>
         } finally {
             btnResume.disabled = false;
             btnResume.textContent = originalText;
+        }
+    }
+
+    async function uploadLogoFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const helperText = input.closest(".form-group").querySelector(".helper-text"); // Get helper-text
+        const originalHelperText = helperText.innerHTML;
+        helperText.innerHTML = `<span style="color: var(--color-active-border);">Đang tải lên logo...</span>`;
+
+        try {
+            const resp = await fetch("/api/upload-logo", {
+                method: "POST",
+                body: formData
+            });
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.detail || "Không thể tải lên logo");
+            }
+            const data = await resp.json();
+            document.getElementById("logo-path-input").value = data.logo_path;
+            showToast("Tải lên logo thành công!", "success");
+        } catch (e) {
+            showToast(`Lỗi: ${e.message}`, "error");
+        } finally {
+            helperText.innerHTML = originalHelperText;
+            input.value = "";
         }
     }
 
@@ -2510,6 +2714,7 @@ https://www.tiktok.com/@..."></textarea>
         onSourceModeChanged(activeSourceMode);
         resetBatchOutput();
         setOutputView("single");
+        loadAvailableVoices();
     })();
 
     // Apply saved theme on page load

@@ -95,7 +95,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--subtitle-font-size", type=int, default=None)
     parser.add_argument("--mask-opacity", type=float, default=None)
     parser.add_argument("--no-dub-audio", action="store_true")
-    return parser.parse_args()
+    parser.add_argument("--logo-path", default=None, help="Path to logo image file.")
+    parser.add_argument(
+        "--logo-position",
+        choices=["top_left", "top_right", "bottom_left", "bottom_right"],
+        default="top_right",
+        help="Position to overlay logo.",
+    )
+    parser.add_argument("--logo-width", type=int, default=None, help="Scale logo to width in pixels.")
+    parser.add_argument(
+        "--output-speed",
+        type=float,
+        default=config.OUTPUT_PLAYBACK_SPEED,
+        help=f"Output video playback speed: 1.0, 1.1, 1.2, 1.3 (default: {config.OUTPUT_PLAYBACK_SPEED})",
+    )
+    args = parser.parse_args()
+    from src.output_speed import validate_output_speed
+    try:
+        args.output_speed = validate_output_speed(args.output_speed)
+    except ValueError as exc:
+        parser.error(str(exc))
+    return args
 
 
 def main() -> None:
@@ -126,6 +146,10 @@ def main() -> None:
             "subtitle_font_size": args.subtitle_font_size,
             "mask_opacity": args.mask_opacity,
             "no_dub_audio": args.no_dub_audio,
+            "logo_path": args.logo_path,
+            "logo_position": args.logo_position,
+            "logo_width": args.logo_width,
+            "output_playback_speed": args.output_speed,
         }
         batch = create_batch_state(
             args.input,

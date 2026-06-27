@@ -3,7 +3,7 @@ import uuid
 import json
 import logging
 import threading
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Response, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
@@ -69,6 +69,10 @@ class PipelineRequest(BaseModel):
     subtitle_style: str = "plain"
     subtitle_font_size: Optional[int] = None
     mask_opacity: Optional[float] = None
+    logo_path: Optional[str] = None
+    logo_position: str = "top_right"
+    logo_width: Optional[int] = None
+    output_playback_speed: float = 1.0
 
 
 class BatchPipelineRequest(BaseModel):
@@ -85,6 +89,10 @@ class BatchPipelineRequest(BaseModel):
     subtitle_style: str = "plain"
     subtitle_font_size: Optional[int] = None
     mask_opacity: Optional[float] = None
+    logo_path: Optional[str] = None
+    logo_position: str = "top_right"
+    logo_width: Optional[int] = None
+    output_playback_speed: float = 1.0
 
 
 def _build_batch_extra_options(req: BatchPipelineRequest) -> dict[str, Any]:
@@ -99,6 +107,10 @@ def _build_batch_extra_options(req: BatchPipelineRequest) -> dict[str, Any]:
         "subtitle_font_size": req.subtitle_font_size,
         "mask_opacity": req.mask_opacity,
         "no_dub_audio": False,
+        "logo_path": req.logo_path,
+        "logo_position": req.logo_position,
+        "logo_width": req.logo_width,
+        "output_playback_speed": req.output_playback_speed,
     }
 
 
@@ -148,8 +160,10 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
         # Resolve voice ID from voice selection
         if req.voice == "male":
             voice_id = config.VIETNAMESE_VOICEID_MALE
-        else:
+        elif req.voice == "female":
             voice_id = config.VIETNAMESE_VOICEID_FEMALE
+        else:
+            voice_id = req.voice
 
         # Ensure voice ID is configured only if mode is not subtitle_only
         if req.mode != "subtitle_only" and not voice_id:
@@ -176,6 +190,10 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
             subtitle_style=req.subtitle_style,
             subtitle_font_size=req.subtitle_font_size,
             mask_opacity=req.mask_opacity,
+            logo_path=req.logo_path,
+            logo_position=req.logo_position,
+            logo_width=req.logo_width,
+            output_playback_speed=req.output_playback_speed,
         )
 
         with tasks_lock:
@@ -271,6 +289,23 @@ def execute_batch_pipeline(task_id: str, req: BatchPipelineRequest):
         root_logger.removeHandler(handler)
 
 
+@app.post("/api/upload-logo")
+def upload_logo(file: UploadFile = File(...)):
+    import time
+    try:
+        os.makedirs("output/logos", exist_ok=True)
+        filename = f"{int(time.time())}_{file.filename}"
+        save_path = os.path.join("output", "logos", filename)
+        with open(save_path, "wb") as buffer:
+            buffer.write(file.file.read())
+        abs_path = os.path.abspath(save_path)
+        return {"logo_path": abs_path}
+    except Exception as e:
+        logger = logging.getLogger("web_server")
+        logger.error(f"Error uploading logo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/run")
 def run_pipeline(req: PipelineRequest, background_tasks: BackgroundTasks):
     if not req.url and not req.file_path and not req.resume_dir:
@@ -363,6 +398,114 @@ def get_speakers(work_dir: str):
         "default_male": getattr(config, "VIETNAMESE_VOICEID_MALE", ""),
         "default_female": getattr(config, "VIETNAMESE_VOICEID_FEMALE", ""),
     }
+
+
+@app.get("/api/voices")
+def get_voices():
+    voices = []
+    
+    # 1. Standard system presets
+    voices.append({"id": "female", "name": "Giọng Nữ mặc định", "gender": "female", "source": "system"})
+    voices.append({"id": "male", "name": "Giọng Nam mặc định", "gender": "male", "source": "system"})
+    
+    # TikTok Voices
+    voices.append({"id": "BV074_streaming", "name": "TikTok: Cô gái hoạt ngôn (Nữ)", "gender": "female", "source": "tiktok"})
+    voices.append({"id": "BV075_streaming", "name": "TikTok: Giọng Nam", "gender": "male", "source": "tiktok"})
+    
+    # 2. Cloned voices from OmniVoice Studio SQLite DB
+    roaming_app = os.environ.get("APPDATA", "")
+    db_path = os.path.join(roaming_app, "OmniVoice", "omnivoice.db")
+    if os.path.exists(db_path):
+        import sqlite3
+        try:
+            conn = sqlite3.connect(db_path)
+            c = conn.cursor()
+            c.execute("SELECT id, name, ref_text, language FROM voice_profiles ORDER BY name ASC")
+            for row in c.fetchall():
+                vid, vname, vtext, vlang = row
+                voices.append({
+                    "id": vid,
+                    "name": f"Clone: {vname}",
+                    "gender": "neutral",
+                    "source": "omnivoice",
+                    "ref_text": vtext,
+                    "language": vlang
+                })
+            conn.close()
+        except Exception as e:
+            logging.error(f"Error querying SQLite voice profiles: {e}")
+            
+    # 3. Local voices folder in Auto-Translade-video & parent directories
+    search_dirs = [("voices", "local_file"), ("..", "parent_dir"), ("../voices", "parent_voices")]
+    for s_dir, source_name in search_dirs:
+        if os.path.exists(s_dir):
+            try:
+                for f_name in os.listdir(s_dir):
+                    if os.path.isfile(os.path.join(s_dir, f_name)) and f_name.lower().endswith((".wav", ".mp3")):
+                        # Avoid duplicates
+                        if not any(v["id"] == f_name for v in voices):
+                            display_name = f"File: {f_name}"
+                            if "0623" in f_name:
+                                display_name = "Giọng mới (0623)"
+                            voices.append({
+                                "id": f_name,
+                                "name": display_name,
+                                "gender": "neutral",
+                                "source": source_name
+                            })
+            except Exception as e:
+                logging.error(f"Error scanning directory {s_dir}: {e}")
+                
+    return {"voices": voices, "provider": config.TTS_PROVIDER}
+
+
+@app.get("/api/voices/preview/{voice_id}")
+def get_voice_preview(voice_id: str):
+    if "0623" in voice_id or voice_id in ("37862b30", "hue.mp3"):
+        text = "Xin chào! Đây là lần đầu tiên tôi trò chuyện bằng giọng nói mới được nhân bản trực tiếp từ tệp âm thanh mẫu."
+    else:
+        text = "Xin chào, đây là giọng đọc thử nghiệm của tôi."
+    
+    from src.synthesizer_vi import synthesize_segment_vi
+    import tempfile
+    
+    temp_dir = tempfile.gettempdir()
+    output_path = os.path.join(temp_dir, f"preview_{uuid.uuid4().hex}.wav")
+    
+    try:
+        resolved_voice_id = voice_id
+        if voice_id == "female":
+            resolved_voice_id = config.VIETNAMESE_VOICEID_FEMALE
+        elif voice_id == "male":
+            resolved_voice_id = config.VIETNAMESE_VOICEID_MALE
+            
+        res = synthesize_segment_vi(
+            text_vi=text,
+            output_path=output_path,
+            voice_id=resolved_voice_id or ""
+        )
+        
+        if os.path.exists(output_path):
+            with open(output_path, "rb") as f:
+                content = f.read()
+            try:
+                os.remove(output_path)
+            except OSError:
+                pass
+            return Response(content=content, media_type="audio/wav")
+        else:
+            raise HTTPException(status_code=500, detail="TTS succeeded but output file not found")
+    except Exception as e:
+        if os.path.exists(output_path):
+            try:
+                os.remove(output_path)
+            except OSError:
+                pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Không thể tạo âm thanh nghe thử: {e}"
+        )
+
 
 
 @app.get("/")

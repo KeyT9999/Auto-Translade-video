@@ -107,3 +107,43 @@ def test_synthesize_segment_vi_lucylab_routing(monkeypatch):
     assert res["speed_adjusted"] is False
     assert res["rate_applied"] == "1.0x"
     assert res["job_id"] == "export_123"
+
+
+def test_synthesize_segment_vi_omnivoice_auto_routing(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "TTS_PROVIDER", "lucylab")
+    
+    called_omnivoice = False
+    
+    def mock_ensure_server():
+        nonlocal called_omnivoice
+        called_omnivoice = True
+        return "http://mock-omnivoice"
+        
+    import src.synthesizer_vi
+    import requests
+    
+    class MockResponse:
+        status_code = 200
+        content = b"fake audio content"
+        
+    def mock_post(url, **kwargs):
+        assert url == "http://mock-omnivoice/synthesize"
+        return MockResponse()
+        
+    class MockAudioSegment:
+        def __len__(self):
+            return 4000
+            
+    monkeypatch.setattr(src.synthesizer_vi, "_ensure_local_omnivoice_server_running", mock_ensure_server)
+    monkeypatch.setattr(requests, "post", mock_post)
+    monkeypatch.setattr(src.synthesizer_vi, "is_valid_audio_file", lambda p: True)
+    monkeypatch.setattr(src.synthesizer_vi.AudioSegment, "from_file", lambda p: MockAudioSegment())
+    
+    output_wav = tmp_path / "output.wav"
+    res = synthesize_segment_vi("Xin chào", str(output_wav), voice_id="37862b30")
+    
+    assert called_omnivoice is True
+    assert res["provider"] == "omnivoice"
+    assert res["actual_duration"] == 4.0
+    assert output_wav.exists()
+

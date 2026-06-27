@@ -236,7 +236,7 @@ def test_subtitle_only_resume_rebuilds_srt_without_speaker_detection(tmp_path, m
             f.write("[Script Info]\n")
         return output_path
 
-    def mock_render_with_cover(video_path, ass_path, output_path, cover_cfg):
+    def mock_render_with_cover(video_path, ass_path, output_path, cover_cfg, logo_cfg=None):
         with open(output_path, "w", encoding="utf-8") as f:
             f.write("mock subtitled video")
         return output_path
