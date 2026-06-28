@@ -101,6 +101,11 @@ def transcribe(audio_path: str, language: str) -> list[dict]:
         logger.warning(f"Router ASR failed: {e}")
 
     logger.warning("Router ASR failed or was not configured. Falling back to Azure ASR...")
+    if not getattr(config, "AZURE_SPEECH_KEY", None) or not getattr(config, "AZURE_SPEECH_REGION", None):
+        raise ValueError(
+            "Azure Speech ASR fallback failed because AZURE_SPEECH_KEY or AZURE_SPEECH_REGION is not configured in .env. "
+            "Please check your API key settings or retry when Groq API is back online."
+        )
     azure_lang = "en-US" if language == "auto" else language
     speech_config = speechsdk.SpeechConfig(
         subscription=config.AZURE_SPEECH_KEY,

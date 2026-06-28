@@ -91,3 +91,50 @@ def test_get_voice_preview_endpoint(monkeypatch):
     assert response.content == b"dummy wav data"
     assert called_synthesize is True
 
+
+def test_check_link_endpoint():
+    # Setup temporary mockup output/VN/test_session
+    session_dir = os.path.join("output", "VN", "test_check_link_session")
+    os.makedirs(session_dir, exist_ok=True)
+    
+    report_data = {
+        "status": "success",
+        "source_url": "https://www.youtube.com/watch?v=test_check_link",
+        "output_dir": session_dir,
+        "files": {
+            "dubbed_video": os.path.join(session_dir, "dubbed_video.mp4")
+        }
+    }
+    
+    report_path = os.path.join(session_dir, "report.json")
+    video_path = os.path.join(session_dir, "dubbed_video.mp4")
+    
+    try:
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(report_data, f)
+            
+        with open(video_path, "wb") as f:
+            f.write(b"mock mp4 data")
+            
+        # Test GET endpoint
+        response = client.get("/api/check-link?url=https://www.youtube.com/watch?v=test_check_link")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["exists"] is True
+        assert "work_dir" in data
+        
+        # Test GET endpoint with non-existent URL
+        response = client.get("/api/check-link?url=https://www.youtube.com/watch?v=non_existent")
+        assert response.status_code == 200
+        assert response.json()["exists"] is False
+        
+    finally:
+        # Cleanup
+        if os.path.exists(report_path):
+            os.remove(report_path)
+        if os.path.exists(video_path):
+            os.remove(video_path)
+        if os.path.exists(session_dir):
+            os.rmdir(session_dir)
+
+

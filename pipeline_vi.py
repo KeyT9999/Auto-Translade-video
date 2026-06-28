@@ -252,6 +252,8 @@ def run_single_video_pipeline(
             subtitle_style=str(extra_options.get("subtitle_style") or "plain"),
             subtitle_font_size=extra_options.get("subtitle_font_size"),
             mask_opacity=extra_options.get("mask_opacity"),
+            mask_y_percent=extra_options.get("mask_y_percent"),
+            mask_height_percent=extra_options.get("mask_height_percent"),
             no_dub_audio=bool(extra_options.get("no_dub_audio", False)),
             from_step=extra_options.get("from_step"),
             logo_path=extra_options.get("logo_path"),
@@ -657,6 +659,18 @@ def parse_args() -> argparse.Namespace:
         help="Opacity of the dark background cover mask (0.0 to 1.0)",
     )
     parser.add_argument(
+        "--mask-y-percent",
+        type=float,
+        default=None,
+        help="Y position of the cover mask as percentage (0.0 to 1.0)",
+    )
+    parser.add_argument(
+        "--mask-height-percent",
+        type=float,
+        default=None,
+        help="Height of the cover mask as percentage (0.0 to 1.0)",
+    )
+    parser.add_argument(
         "--no-dub-audio",
         action="store_true",
         help="Skip TTS narration generation, keeping only original audio",
@@ -799,6 +813,8 @@ def run_pipeline_vi(
     subtitle_style: str = "plain",
     subtitle_font_size: int | None = None,
     mask_opacity: float | None = None,
+    mask_y_percent: float | None = None,
+    mask_height_percent: float | None = None,
     no_dub_audio: bool = False,
     from_step: str | None = None,
     logo_path: str | None = None,
@@ -1517,8 +1533,8 @@ def run_pipeline_vi(
                     generate_ass_subtitles(segments, ass_path, ass_style_config, video_path=video_path)
                     cover_cfg = {
                         "cover_original_subtitles": cover_original_subtitles,
-                        "mask_y_percent": config.SUBTITLE_MASK_Y_PERCENT,
-                        "mask_height_percent": config.SUBTITLE_MASK_HEIGHT_PERCENT,
+                        "mask_y_percent": mask_y_percent if mask_y_percent is not None else config.SUBTITLE_MASK_Y_PERCENT,
+                        "mask_height_percent": mask_height_percent if mask_height_percent is not None else config.SUBTITLE_MASK_HEIGHT_PERCENT,
                         "mask_opacity": mask_opacity if mask_opacity is not None else config.SUBTITLE_MASK_OPACITY,
                         "mask_extra_height_percent": config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT,
                         "mask_extra_opacity": config.SUBTITLE_MASK_EXTRA_OPACITY,
@@ -1560,8 +1576,8 @@ def run_pipeline_vi(
                     sub_path = ass_path
                     cover_cfg = {
                         "cover_original_subtitles": cover_original_subtitles,
-                        "mask_y_percent": config.SUBTITLE_MASK_Y_PERCENT,
-                        "mask_height_percent": config.SUBTITLE_MASK_HEIGHT_PERCENT,
+                        "mask_y_percent": mask_y_percent if mask_y_percent is not None else config.SUBTITLE_MASK_Y_PERCENT,
+                        "mask_height_percent": mask_height_percent if mask_height_percent is not None else config.SUBTITLE_MASK_HEIGHT_PERCENT,
                         "mask_opacity": mask_opacity if mask_opacity is not None else config.SUBTITLE_MASK_OPACITY,
                         "mask_extra_height_percent": config.SUBTITLE_MASK_EXTRA_HEIGHT_PERCENT,
                         "mask_extra_opacity": config.SUBTITLE_MASK_EXTRA_OPACITY,
@@ -1798,6 +1814,8 @@ def main():
             subtitle_style=args.subtitle_style,
             subtitle_font_size=args.subtitle_font_size,
             mask_opacity=args.mask_opacity,
+            mask_y_percent=args.mask_y_percent,
+            mask_height_percent=args.mask_height_percent,
             no_dub_audio=args.no_dub_audio,
             from_step=args.from_step,
             logo_path=args.logo_path,

@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  video-translator:
+    build: .
+    container_name: auto-translate-video
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount thư mục output và voices ra ngoài máy chủ thật (VPS) để:
+      # 1. Tránh mất video thành phẩm khi khởi động lại hoặc cập nhật container.
+      # 2. Bạn có thể dễ dàng truy cập và lấy video trực tiếp từ thư mục trên VPS.
+      - ./output:/app/output
+      - ./voices:/app/voices
+    # Tự động nạp các biến môi trường và API Keys từ file .env hiện tại
+    env_file:
+      - .env
+    # Cấu hình tự động khởi động lại nếu server bị crash hoặc VPS khởi động lại
+    restart: always

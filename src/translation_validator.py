@@ -198,7 +198,7 @@ def _looks_like_true_hallucination(
     if _is_numeric_or_serial_source(source_text) and _is_spoken_number_target(target_text):
         return False
 
-    if any(pattern in target_fold for pattern in META_HALLUCINATION_PATTERNS):
+    if any(re.search(rf"\b{re.escape(pattern)}\b", target_fold) for pattern in META_HALLUCINATION_PATTERNS):
         return True
 
     clause_count = sum(target_text.count(mark) for mark in (",", ";", ".", "!", "?"))
@@ -344,7 +344,8 @@ def validate_translation(
                         )
                     )
                 else:
-                    severity = "error" if char_rate >= subtitle_hard_limit else "warning"
+                    as_error = getattr(config, "VALIDATOR_TIMING_OVERFLOW_AS_ERROR", False)
+                    severity = "error" if (as_error and char_rate >= subtitle_hard_limit) else "warning"
                     issues.append(
                         _make_issue(
                             seg_id,

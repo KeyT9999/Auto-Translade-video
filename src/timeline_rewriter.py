@@ -174,19 +174,33 @@ def rewrite_timeline(
         ]
 
     logger.info("Found %s segments requiring timeline rewrite.", len(to_rewrite))
-    prompt = build_rewrite_prompt(video_context, character_bible, to_rewrite)
+
+    # Process in batches to avoid API timeouts on long videos
+    import config
+    batch_size = getattr(config, "TIMELINE_REWRITE_BATCH_SIZE", 25)
+    rewritten_results = []
 
     from src.ai import ai_router
 
-    try:
-        res_dict = ai_router.rewrite_timeline(prompt)
-        rewritten_results = res_dict.get("rewritten_segments") if isinstance(res_dict, dict) else None
-    except Exception as exc:
-        logger.error("Router timeline rewrite failed: %s", exc)
-        rewritten_results = None
+    for idx in range(0, len(to_rewrite), batch_size):
+        batch = to_rewrite[idx : idx + batch_size]
+        logger.info(
+            "  Processing timeline rewrite batch: segments %s to %s of %s...",
+            idx + 1,
+            min(idx + batch_size, len(to_rewrite)),
+            len(to_rewrite),
+        )
+        prompt = build_rewrite_prompt(video_context, character_bible, batch)
+        try:
+            res_dict = ai_router.rewrite_timeline(prompt)
+            batch_results = res_dict.get("rewritten_segments") if isinstance(res_dict, dict) else None
+            if batch_results:
+                rewritten_results.extend(batch_results)
+        except Exception as exc:
+            logger.error("Router timeline rewrite failed for batch starting at index %s: %s", idx, exc)
 
     if not rewritten_results:
-        logger.warning("Timeline rewrite AI failed. Proceeding with original translations.")
+        logger.warning("Timeline rewrite AI failed or returned empty results. Proceeding with original translations.")
         rewritten_results = []
 
     rewritten_map = {

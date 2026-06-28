@@ -1196,6 +1196,7 @@
                 <label class="form-label main-focus-label" for="video-url">Nguồn Video (YouTube, TikTok, Facebook, Douyin...)</label>
                 <input type="text" id="video-url" class="input-text url-input" placeholder="Dán đường dẫn video tại đây..." value="">
                 <div class="helper-text">Dùng khi bạn xử lý 1 video hoặc 1 URL duy nhất.</div>
+                <div id="video-url-warning" class="helper-text" style="display: none; color: #ff9800; font-weight: bold; margin-top: var(--spacing-4);"></div>
             </div>
 
             <div class="form-group" id="batch-source-group" style="display: none;">
@@ -1292,8 +1293,18 @@ https://www.tiktok.com/@..."></textarea>
                     </div>
                 </div>
                 <div class="form-group" id="mask-opacity-group" style="display: none; margin-top: var(--spacing-8);">
-                    <label class="form-label" for="mask-opacity-range">Độ mờ nền che: <span id="mask-opacity-value">0.55</span></label>
-                    <input type="range" id="mask-opacity-range" min="0.3" max="0.9" step="0.05" value="0.55" style="width: 100%; accent-color: var(--color-active-border);">
+                    <label class="form-label" for="mask-opacity-range">Độ mờ nền che: <span id="mask-opacity-value">1.00</span></label>
+                    <input type="range" id="mask-opacity-range" min="0.1" max="1.0" step="0.05" value="1.0" style="width: 100%; accent-color: var(--color-active-border);">
+                </div>
+                <div class="options-grid" id="mask-geometry-group" style="display: none; margin-top: var(--spacing-8);">
+                    <div class="form-group">
+                        <label class="form-label" for="mask-y-range">Vị trí Y (% chiều cao): <span id="mask-y-value">85</span>%</label>
+                        <input type="range" id="mask-y-range" min="50" max="95" step="1" value="85" style="width: 100%; accent-color: var(--color-active-border);">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="mask-h-range">Chiều cao (%): <span id="mask-h-value">12</span>%</label>
+                        <input type="range" id="mask-h-range" min="5" max="30" step="1" value="12" style="width: 100%; accent-color: var(--color-active-border);">
+                    </div>
                 </div>
             </div>
 
@@ -1680,6 +1691,7 @@ https://www.tiktok.com/@..."></textarea>
     let pollIntervalId = null;
     let availableVoices = [];
     const audioPreview = new Audio();
+    let lastPendingWorkDir = null;
 
     async function loadAvailableVoices() {
         try {
@@ -1756,7 +1768,63 @@ https://www.tiktok.com/@..."></textarea>
     const modeBtns = document.querySelectorAll("#mode-group button");
     const sourceModeBtns = document.querySelectorAll("#source-mode-group button");
 
+    function resetResumeState() {
+        lastPendingWorkDir = null;
+        const btnSubmit = document.getElementById("btn-submit");
+        if (btnSubmit) {
+            btnSubmit.textContent = getCurrentSubmitButtonText();
+        }
+    }
+
+    let checkLinkTimeout = null;
+    function checkUrlDuplicate(url) {
+        const warningEl = document.getElementById("video-url-warning");
+        if (!warningEl) return;
+        warningEl.style.display = "none";
+        warningEl.innerHTML = "";
+
+        if (!url || !url.trim()) return;
+
+        if (checkLinkTimeout) clearTimeout(checkLinkTimeout);
+        checkLinkTimeout = setTimeout(async () => {
+            try {
+                const resp = await fetch("/api/check-link?url=" + encodeURIComponent(url.trim()));
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.exists) {
+                        warningEl.innerHTML = `⚠️ Video này đã được tạo trước đó! <a href="#" id="lnk-load-existing" style="color: var(--color-accent-border); text-decoration: underline;">Nhấn vào đây để xem kết quả sản phẩm</a>`;
+                        warningEl.style.display = "block";
+                        
+                        const lnkLoad = document.getElementById("lnk-load-existing");
+                        if (lnkLoad) {
+                            lnkLoad.addEventListener("click", (e) => {
+                                e.preventDefault();
+                                loadExistingResult(data.work_dir);
+                            });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Lỗi check-link:", e);
+            }
+        }, 500);
+    }
+
+    async function loadExistingResult(workDir) {
+        try {
+            const relPath = workDir.replace(/\\/g, '/').split('/output/')[1];
+            const resp = await fetch("/output/" + relPath + "/report.json");
+            if (!resp.ok) throw new Error("Không thể tải report.json");
+            const data = await resp.json();
+            handlePipelineSuccess(data);
+            showToast("Đã tải kết quả video hiện có!", "success");
+        } catch (e) {
+            showToast("Lỗi tải kết quả: " + e.message, "error");
+        }
+    }
+
     const videoUrlEl = document.getElementById("video-url");
+    const filePathEl = document.getElementById("file-path");
     const batchLinksEl = document.getElementById("batch-links");
     if (videoUrlEl) {
         const handleUrlChange = (val) => {
@@ -1767,10 +1835,23 @@ https://www.tiktok.com/@..."></textarea>
                 }
             }
         };
-        videoUrlEl.addEventListener("input", (e) => handleUrlChange(e.target.value));
-        videoUrlEl.addEventListener("paste", (e) => {
-            setTimeout(() => handleUrlChange(videoUrlEl.value), 0);
+        videoUrlEl.addEventListener("input", (e) => {
+            handleUrlChange(e.target.value);
+            resetResumeState();
+            checkUrlDuplicate(e.target.value);
         });
+        videoUrlEl.addEventListener("paste", (e) => {
+            setTimeout(() => {
+                handleUrlChange(videoUrlEl.value);
+                resetResumeState();
+                checkUrlDuplicate(videoUrlEl.value);
+            }, 0);
+        });
+    }
+
+    if (filePathEl) {
+        filePathEl.addEventListener("input", resetResumeState);
+        filePathEl.addEventListener("paste", () => setTimeout(resetResumeState, 0));
     }
 
     function getNormalizedBatchLinks() {
@@ -1820,6 +1901,7 @@ https://www.tiktok.com/@..."></textarea>
             activeMode = btn.getAttribute("data-val");
             onModeChanged(activeMode);
             onSourceModeChanged(activeSourceMode);
+            resetResumeState();
         });
     });
 
@@ -1829,6 +1911,7 @@ https://www.tiktok.com/@..."></textarea>
             btn.classList.add("active");
             activeSourceMode = btn.getAttribute("data-val");
             onSourceModeChanged(activeSourceMode);
+            resetResumeState();
         });
     });
 
@@ -1904,13 +1987,17 @@ https://www.tiktok.com/@..."></textarea>
         }
     }
 
-    // Cover checkbox → show/hide mask opacity slider
+    // Cover checkbox → show/hide mask opacity slider & geometry controls
     const coverCheckbox = document.getElementById("cover-original-subtitles");
     if (coverCheckbox) {
         coverCheckbox.addEventListener("change", () => {
             const opacityGroup = document.getElementById("mask-opacity-group");
+            const geometryGroup = document.getElementById("mask-geometry-group");
             if (opacityGroup) {
                 opacityGroup.style.display = coverCheckbox.checked ? "flex" : "none";
+            }
+            if (geometryGroup) {
+                geometryGroup.style.display = coverCheckbox.checked ? "grid" : "none";
             }
         });
     }
@@ -1921,6 +2008,22 @@ https://www.tiktok.com/@..."></textarea>
         opacitySlider.addEventListener("input", (e) => {
             const valueEl = document.getElementById("mask-opacity-value");
             if (valueEl) valueEl.textContent = parseFloat(e.target.value).toFixed(2);
+        });
+    }
+
+    // Geometry sliders → update displayed values
+    const maskYSlider = document.getElementById("mask-y-range");
+    if (maskYSlider) {
+        maskYSlider.addEventListener("input", (e) => {
+            const valueEl = document.getElementById("mask-y-value");
+            if (valueEl) valueEl.textContent = e.target.value;
+        });
+    }
+    const maskHSlider = document.getElementById("mask-h-range");
+    if (maskHSlider) {
+        maskHSlider.addEventListener("input", (e) => {
+            const valueEl = document.getElementById("mask-h-value");
+            if (valueEl) valueEl.textContent = e.target.value;
         });
     }
 
@@ -1965,6 +2068,23 @@ https://www.tiktok.com/@..."></textarea>
             return;
         }
 
+        if (!lastPendingWorkDir && activeSourceMode === "single" && urlInput) {
+            try {
+                const checkResp = await fetch("/api/check-link?url=" + encodeURIComponent(urlInput));
+                if (checkResp.ok) {
+                    const checkData = await checkResp.json();
+                    if (checkData.exists) {
+                        const confirmReprocess = confirm("Video này đã được tạo rồi! Bạn có chắc chắn muốn tạo lại từ đầu không?");
+                        if (!confirmReprocess) {
+                            return;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Lỗi check-link:", e);
+            }
+        }
+
         const commonPayload = {
             source_lang: document.getElementById("src-lang").value,
             voice: activeVoice,
@@ -1979,6 +2099,8 @@ https://www.tiktok.com/@..."></textarea>
             subtitle_style: document.getElementById("subtitle-style-select").value,
             subtitle_font_size: parseInt(document.getElementById("subtitle-font-size-select").value),
             mask_opacity: parseFloat(document.getElementById("mask-opacity-range").value),
+            mask_y_percent: parseFloat(document.getElementById("mask-y-range").value) / 100,
+            mask_height_percent: parseFloat(document.getElementById("mask-h-range").value) / 100,
             logo_path: document.getElementById("logo-path-input").value.trim() || null,
             logo_position: document.getElementById("logo-position-select").value,
             logo_width: parseInt(document.getElementById("logo-width-input").value) || null,
@@ -1990,6 +2112,7 @@ https://www.tiktok.com/@..."></textarea>
             ...commonPayload,
             url: urlInput || null,
             file_path: fileInput || null,
+            resume_dir: lastPendingWorkDir || null,
         };
 
         if (activeSourceMode === "batch") {
@@ -2655,6 +2778,7 @@ https://www.tiktok.com/@..."></textarea>
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
         btnSubmit.textContent = "Tiếp tục (Resume)";
+        lastPendingWorkDir = result.work_dir;
 
         document.getElementById("batch-status-panel").style.display = "none";
 
@@ -2666,7 +2790,8 @@ https://www.tiktok.com/@..."></textarea>
     function handlePipelinePartialFailure(result) {
         const btnSubmit = document.getElementById("btn-submit");
         btnSubmit.disabled = false;
-        btnSubmit.textContent = getCurrentSubmitButtonText();
+        btnSubmit.textContent = "Tiếp tục (Resume)";
+        lastPendingWorkDir = result.output_dir;
         document.getElementById("batch-status-panel").style.display = "none";
 
         // Show control wizard again so the user can retry or resume the run.
@@ -2674,8 +2799,8 @@ https://www.tiktok.com/@..."></textarea>
 
         const pendingPath = result?.files?.tts_pending_segments || result?.output_dir || "";
         const message = pendingPath
-            ? "TTS chÆ°a hoÃ n táº¥t. Kiá»ƒm tra vÃ  resume tá»«: " + pendingPath
-            : "TTS chÆ°a hoÃ n táº¥t. Vui lÃ²ng kiá»ƒm tra log Ä‘á»ƒ resume.";
+            ? "TTS chưa hoàn thành. Kiểm tra và resume từ: " + pendingPath
+            : "TTS chưa hoàn thành. Vui lòng kiểm tra log để resume.";
         showToast(message, "error");
     }
 

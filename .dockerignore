@@ -1,0 +1,37 @@
+# Bỏ qua Git và cache
+.git
+.gitignore
+.gitattributes
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.cache
+.ipynb_checkpoints
+
+# Bỏ qua các file môi trường ảo của Python
+venv
+.venv
+env
+
+# Bỏ qua tệp tin chứa API Keys để đảm bảo bảo mật
+.env
+.env.local
+
+# Bỏ qua dữ liệu đầu ra và các tệp tải về (giúp build Docker siêu nhanh và dung lượng nhẹ)
+output/
+downloads/
+output_vi/
+output_ja/
+
+# Bỏ qua các file test và file tạm không cần thiết khi chạy thực tế
+tests/
+scratch/
+*.wav
+*.mp3
+*.mp4
+*.xlsx
+*.json
+!get_content_url.example.json
+!list_video.example.json

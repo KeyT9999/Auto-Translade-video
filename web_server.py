@@ -69,6 +69,8 @@ class PipelineRequest(BaseModel):
     subtitle_style: str = "plain"
     subtitle_font_size: Optional[int] = None
     mask_opacity: Optional[float] = None
+    mask_y_percent: Optional[float] = None
+    mask_height_percent: Optional[float] = None
     logo_path: Optional[str] = None
     logo_position: str = "top_right"
     logo_width: Optional[int] = None
@@ -89,6 +91,8 @@ class BatchPipelineRequest(BaseModel):
     subtitle_style: str = "plain"
     subtitle_font_size: Optional[int] = None
     mask_opacity: Optional[float] = None
+    mask_y_percent: Optional[float] = None
+    mask_height_percent: Optional[float] = None
     logo_path: Optional[str] = None
     logo_position: str = "top_right"
     logo_width: Optional[int] = None
@@ -106,6 +110,8 @@ def _build_batch_extra_options(req: BatchPipelineRequest) -> dict[str, Any]:
         "subtitle_style": req.subtitle_style,
         "subtitle_font_size": req.subtitle_font_size,
         "mask_opacity": req.mask_opacity,
+        "mask_y_percent": req.mask_y_percent,
+        "mask_height_percent": req.mask_height_percent,
         "no_dub_audio": False,
         "logo_path": req.logo_path,
         "logo_position": req.logo_position,
@@ -190,6 +196,8 @@ def execute_pipeline(task_id: str, req: PipelineRequest):
             subtitle_style=req.subtitle_style,
             subtitle_font_size=req.subtitle_font_size,
             mask_opacity=req.mask_opacity,
+            mask_y_percent=req.mask_y_percent,
+            mask_height_percent=req.mask_height_percent,
             logo_path=req.logo_path,
             logo_position=req.logo_position,
             logo_width=req.logo_width,
@@ -304,6 +312,55 @@ def upload_logo(file: UploadFile = File(...)):
         logger = logging.getLogger("web_server")
         logger.error(f"Error uploading logo: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def find_completed_session_by_url(url: str) -> Optional[dict[str, Any]]:
+    from src.utils import extract_url
+    clean_url = extract_url(url) if url else ""
+    if not clean_url:
+        return None
+
+    vn_dir = os.path.join("output", "VN")
+    if not os.path.exists(vn_dir):
+        return None
+
+    for entry in os.listdir(vn_dir):
+        entry_path = os.path.join(vn_dir, entry)
+        if os.path.isdir(entry_path):
+            report_path = os.path.join(entry_path, "report.json")
+            if os.path.exists(report_path):
+                try:
+                    with open(report_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    
+                    report_url = data.get("source_url")
+                    if report_url:
+                        from src.utils import extract_url as extract_report_url
+                        report_url = extract_report_url(report_url)
+                        
+                    if report_url == clean_url and data.get("status") == "success":
+                        # Validate that the video exists
+                        files = data.get("files", {})
+                        video_path = files.get("dubbed_video") or files.get("subtitled_video")
+                        if video_path and os.path.exists(video_path):
+                            return data
+                except Exception:
+                    pass
+    return None
+
+
+@app.get("/api/check-link")
+def check_link(url: str):
+    if not url:
+        raise HTTPException(status_code=400, detail="URL parameter is required")
+    session = find_completed_session_by_url(url)
+    if session:
+        return {
+            "exists": True,
+            "work_dir": session.get("output_dir"),
+            "result": session
+        }
+    return {"exists": False}
 
 
 @app.post("/api/run")
